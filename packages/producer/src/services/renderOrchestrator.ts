@@ -260,6 +260,8 @@ export interface RenderConfig {
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
   logger?: ProducerLogger;
+  /** Extra scripts injected after the render runtime before </body> in index.html. */
+  renderBodyScripts?: string[];
   /** Override CRF for the video encoder. Mutually exclusive with `videoBitrate`. */
   crf?: number;
   /** Target video bitrate (e.g. "10M"). Mutually exclusive with `crf`. */
@@ -2169,6 +2171,7 @@ export async function executeRenderJob(
         compiledDir: join(workDir, "compiled"),
         port: 0,
         preHeadScripts: [VIRTUAL_TIME_SHIM],
+        additionalBodyScripts: job.config.renderBodyScripts,
       });
       assertNotAborted();
 
@@ -2631,6 +2634,7 @@ export async function executeRenderJob(
         compiledDir: join(workDir, "compiled"),
         port: 0,
         preHeadScripts: [VIRTUAL_TIME_SHIM],
+        additionalBodyScripts: job.config.renderBodyScripts,
       });
       assertNotAborted();
     }
