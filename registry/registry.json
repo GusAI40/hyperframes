@@ -92,6 +92,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "canvas-screen-pip",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "north-korea-locked-down",
       "type": "hyperframes:block"
     },
