@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
+import { StoryboardCanvas } from "./components/storyboard/StoryboardCanvas";
 import { SourceEditor } from "./components/editor/SourceEditor";
 import { LeftSidebar } from "./components/sidebar/LeftSidebar";
 import { RenderQueue } from "./components/renders/RenderQueue";
@@ -157,6 +158,7 @@ function getTimelineElementLabel(element: TimelineElement): string {
 }
 
 type RightPanelTab = "design" | "motion" | "renders";
+type ViewMode = "preview" | "storyboard";
 
 const GENERIC_FONT_FAMILIES = new Set([
   "inherit",
@@ -1024,6 +1026,7 @@ export function StudioApp() {
   const [globalDragOver, setGlobalDragOver] = useState(false);
   const [appToast, setAppToast] = useState<AppToast | null>(null);
   const [timelineVisible, setTimelineVisible] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>("preview");
   const [captureFrameTime, setCaptureFrameTime] = useState(0);
   const dragCounterRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1066,6 +1069,20 @@ export function StudioApp() {
   const toggleTimelineVisibility = useCallback(() => {
     setTimelineVisible((visible) => !visible);
   }, []);
+
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+
+  const storyboardCompositions = useMemo(() => {
+    return timelineElements
+      .filter((el) => el.compositionSrc || el.tag === "div")
+      .map((el) => ({
+        id: el.id,
+        path: el.compositionSrc || el.sourceFile || "index.html",
+        title: el.label || el.id,
+        start: el.start,
+        duration: el.duration,
+      }));
+  }, [timelineElements]);
   const toggleLeftSidebar = useCallback(() => {
     setLeftCollapsed((collapsed) => !collapsed);
   }, []);
@@ -3925,9 +3942,33 @@ export function StudioApp() {
     >
       {/* Header bar */}
       <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 flex-shrink-0">
-        {/* Left: project name */}
-        <div className="flex items-center gap-2">
+        {/* Left: project name + view mode toggle */}
+        <div className="flex items-center gap-3">
           <span className="text-[11px] font-medium text-neutral-400">{projectId}</span>
+          <div className="flex items-center gap-1 rounded-lg bg-neutral-800/50 p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("preview")}
+              className={`rounded-md px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                viewMode === "preview"
+                  ? "bg-neutral-700 text-white"
+                  : "text-neutral-500 hover:text-neutral-300"
+              }`}
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("storyboard")}
+              className={`rounded-md px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                viewMode === "storyboard"
+                  ? "bg-neutral-700 text-white"
+                  : "text-neutral-500 hover:text-neutral-300"
+              }`}
+            >
+              Storyboard
+            </button>
+          </div>
         </div>
         {/* Right: toolbar buttons */}
         <div className="flex items-center gap-1.5">
@@ -4116,80 +4157,95 @@ export function StudioApp() {
           </div>
         )}
 
-        {/* Center: Preview */}
+        {/* Center: Preview or Storyboard */}
         <div className="flex-1 relative min-w-0">
-          <NLELayout
-            projectId={projectId}
-            refreshKey={refreshKey}
-            activeCompositionPath={activeCompPath}
-            timelineToolbar={timelineToolbar}
-            renderClipContent={renderClipContent}
-            onDeleteElement={handleTimelineElementDelete}
-            onAssetDrop={handleTimelineAssetDrop}
-            onFileDrop={handleTimelineFileDrop}
-            onMoveElement={handleTimelineElementMove}
-            onResizeElement={handleTimelineElementResize}
-            onBlockedEditAttempt={handleBlockedTimelineEdit}
-            onSelectTimelineElement={handleTimelineElementSelect}
-            onInspectTimelineElement={handleTimelineElementInspect}
-            inspectedTimelineElementId={inspectedTimelineElementId}
-            timelineLayerChildCounts={timelineLayerChildCounts}
-            onCompIdToSrcChange={setCompIdToSrc}
-            onCompositionLoadingChange={setCompositionLoading}
-            onCompositionChange={(compPath) => {
-              // Sync activeCompPath when user drills down via timeline double-click
-              // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
-              setActiveCompPath(compPath);
-              setInspectedTimelineElementId(null);
-              refreshPreviewDocumentVersion();
-            }}
-            onIframeRef={handlePreviewIframeRef}
-            previewOverlay={
-              captionEditMode ? (
-                <CaptionOverlay iframeRef={previewIframeRef} />
-              ) : STUDIO_INSPECTOR_PANELS_ENABLED ? (
-                <DomEditOverlay
-                  iframeRef={previewIframeRef}
-                  activeCompositionPath={activeCompPath}
-                  hoverSelection={
-                    STUDIO_PREVIEW_SELECTION_ENABLED && !captionEditMode
-                      ? domEditHoverSelection
-                      : null
-                  }
-                  selection={shouldShowSelectedDomBounds ? domEditSelection : null}
-                  groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
-                  allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED}
-                  onCanvasMouseDown={handlePreviewCanvasMouseDown}
-                  onCanvasPointerMove={handlePreviewCanvasPointerMove}
-                  onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
-                  onSelectionChange={applyDomSelection}
-                  onBlockedMove={handleBlockedDomMove}
-                  onManualDragStart={handleDomManualDragStart}
-                  onPathOffsetCommit={handleDomPathOffsetCommit}
-                  onGroupPathOffsetCommit={handleDomGroupPathOffsetCommit}
-                  onBoxSizeCommit={handleDomBoxSizeCommit}
-                  onRotationCommit={handleDomRotationCommit}
-                />
-              ) : null
-            }
-            timelineFooter={
-              captionEditMode ? (
-                <div
-                  className="border-t border-neutral-800/30 flex-shrink-0"
-                  style={{ height: 60 }}
-                >
-                  <div className="flex items-center gap-1.5 px-2 py-0.5">
-                    <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
-                      Captions
-                    </span>
+          {viewMode === "preview" ? (
+            <NLELayout
+              projectId={projectId}
+              refreshKey={refreshKey}
+              activeCompositionPath={activeCompPath}
+              timelineToolbar={timelineToolbar}
+              renderClipContent={renderClipContent}
+              onDeleteElement={handleTimelineElementDelete}
+              onAssetDrop={handleTimelineAssetDrop}
+              onFileDrop={handleTimelineFileDrop}
+              onMoveElement={handleTimelineElementMove}
+              onResizeElement={handleTimelineElementResize}
+              onBlockedEditAttempt={handleBlockedTimelineEdit}
+              onSelectTimelineElement={handleTimelineElementSelect}
+              onInspectTimelineElement={handleTimelineElementInspect}
+              inspectedTimelineElementId={inspectedTimelineElementId}
+              timelineLayerChildCounts={timelineLayerChildCounts}
+              onCompIdToSrcChange={setCompIdToSrc}
+              onCompositionLoadingChange={setCompositionLoading}
+              onCompositionChange={(compPath) => {
+                // Sync activeCompPath when user drills down via timeline double-click
+                // or navigates back via breadcrumb — keeps sidebar + thumbnails in sync.
+                setActiveCompPath(compPath);
+                setInspectedTimelineElementId(null);
+                refreshPreviewDocumentVersion();
+              }}
+              onIframeRef={handlePreviewIframeRef}
+              previewOverlay={
+                captionEditMode ? (
+                  <CaptionOverlay iframeRef={previewIframeRef} />
+                ) : STUDIO_INSPECTOR_PANELS_ENABLED ? (
+                  <DomEditOverlay
+                    iframeRef={previewIframeRef}
+                    activeCompositionPath={activeCompPath}
+                    hoverSelection={
+                      STUDIO_PREVIEW_SELECTION_ENABLED && !captionEditMode
+                        ? domEditHoverSelection
+                        : null
+                    }
+                    selection={shouldShowSelectedDomBounds ? domEditSelection : null}
+                    groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
+                    allowCanvasMovement={STUDIO_PREVIEW_MANUAL_EDITING_ENABLED}
+                    onCanvasMouseDown={handlePreviewCanvasMouseDown}
+                    onCanvasPointerMove={handlePreviewCanvasPointerMove}
+                    onCanvasPointerLeave={handlePreviewCanvasPointerLeave}
+                    onSelectionChange={applyDomSelection}
+                    onBlockedMove={handleBlockedDomMove}
+                    onManualDragStart={handleDomManualDragStart}
+                    onPathOffsetCommit={handleDomPathOffsetCommit}
+                    onGroupPathOffsetCommit={handleDomGroupPathOffsetCommit}
+                    onBoxSizeCommit={handleDomBoxSizeCommit}
+                    onRotationCommit={handleDomRotationCommit}
+                  />
+                ) : null
+              }
+              timelineFooter={
+                captionEditMode ? (
+                  <div
+                    className="border-t border-neutral-800/30 flex-shrink-0"
+                    style={{ height: 60 }}
+                  >
+                    <div className="flex items-center gap-1.5 px-2 py-0.5">
+                      <span className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider">
+                        Captions
+                      </span>
+                    </div>
+                    <CaptionTimeline pixelsPerSecond={100} />
                   </div>
-                  <CaptionTimeline pixelsPerSecond={100} />
-                </div>
-              ) : undefined
-            }
-            timelineVisible={timelineVisible}
-            onToggleTimeline={toggleTimelineVisibility}
-          />
+                ) : undefined
+              }
+              timelineVisible={timelineVisible}
+              onToggleTimeline={toggleTimelineVisibility}
+            />
+          ) : (
+            <StoryboardCanvas
+              projectId={projectId ?? ""}
+              compositions={storyboardCompositions}
+              selectedId={activeCompPath}
+              onSelectComposition={(id, path) => {
+                setActiveCompPath(path || null);
+                setViewMode("preview");
+              }}
+              currentTime={currentTime}
+              isPlaying={isPlaying}
+              totalDuration={effectiveTimelineDuration}
+            />
+          )}
         </div>
 
         {/* Right panel: Renders-only (resizable, collapsible via header Renders button) */}
