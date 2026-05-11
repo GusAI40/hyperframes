@@ -446,7 +446,6 @@ export const Timeline = memo(function Timeline({
   const resizingClipRef = useRef<ResizingClipState | null>(null);
   resizingClipRef.current = resizingClip;
   const blockedClipRef = useRef<BlockedClipState | null>(null);
-  const deleteInFlightRef = useRef(false);
   const onMoveElementRef = useRef(onMoveElement);
   onMoveElementRef.current = onMoveElement;
   const onResizeElementRef = useRef(onResizeElement);
@@ -976,27 +975,16 @@ export const Timeline = memo(function Timeline({
     };
   });
 
-  useMountEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (disabledRef.current) return;
-      if (!shouldHandleTimelineDeleteKey(event)) return;
-      const selected = selectedElementRef.current;
-      const onDelete = onDeleteElementRef.current;
-      if (!selected || !onDelete || deleteInFlightRef.current) return;
-      event.preventDefault();
-      deleteInFlightRef.current = true;
-      suppressClickRef.current = true;
+  const prevSelectedRef = useRef(selectedElementRef.current);
+  // eslint-disable-next-line no-restricted-syntax, react-hooks/exhaustive-deps
+  useEffect(() => {
+    const prev = prevSelectedRef.current;
+    const curr = selectedElementRef.current;
+    prevSelectedRef.current = curr;
+    if (prev && !curr) {
       setShowPopover(false);
       setRangeSelection(null);
-      Promise.resolve(onDelete(selected)).finally(() => {
-        deleteInFlightRef.current = false;
-        requestAnimationFrame(() => {
-          suppressClickRef.current = false;
-        });
-      });
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    }
   });
 
   const handlePointerDown = useCallback(

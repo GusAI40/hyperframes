@@ -11,7 +11,7 @@ import {
 import { useMountEffect } from "./hooks/useMountEffect";
 import { NLELayout } from "./components/nle/NLELayout";
 import { SourceEditor } from "./components/editor/SourceEditor";
-import { LeftSidebar } from "./components/sidebar/LeftSidebar";
+import { LeftSidebar, type LeftSidebarHandle } from "./components/sidebar/LeftSidebar";
 import { RenderQueue } from "./components/renders/RenderQueue";
 import { useRenderQueue } from "./components/renders/useRenderQueue";
 import { CompositionThumbnail, VideoThumbnail, liveTime, usePlayerStore } from "./player";
@@ -56,6 +56,7 @@ import {
 } from "./player/components/timelineZoom";
 import {
   getTimelineToggleTitle,
+  isEditableTarget,
   shouldHandleTimelineToggleHotkey,
 } from "./utils/timelineDiscovery";
 import { buildFrameCaptureFilename, buildFrameCaptureUrl } from "./utils/frameCapture";
@@ -1031,6 +1032,8 @@ export function StudioApp() {
   const lastBlockedDomMoveToastAtRef = useRef(0);
   const importedFontAssetsRef = useRef<ImportedFontAsset[]>([]);
   const previewHotkeyWindowRef = useRef<Window | null>(null);
+  const handleAppKeyDownRef = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
+  const leftSidebarRef = useRef<LeftSidebarHandle>(null);
   const previewHistoryHotkeyCleanupRef = useRef<(() => void) | null>(null);
   const panelDragRef = useRef<{
     side: "left" | "right";
@@ -1098,34 +1101,31 @@ export function StudioApp() {
     [toggleTimelineVisibility],
   );
 
-  useMountEffect(() => {
-    window.addEventListener("keydown", handleTimelineToggleHotkey);
-    return () => {
-      window.removeEventListener("keydown", handleTimelineToggleHotkey);
-    };
-  });
+  const previewAppKeyDownHandler = useCallback((event: KeyboardEvent) => {
+    handleAppKeyDownRef.current?.(event);
+  }, []);
 
   const syncPreviewTimelineHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
       const nextWindow = iframe?.contentWindow ?? null;
       if (previewHotkeyWindowRef.current === nextWindow) return;
       if (previewHotkeyWindowRef.current) {
-        previewHotkeyWindowRef.current.removeEventListener("keydown", handleTimelineToggleHotkey);
+        previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
       }
       previewHotkeyWindowRef.current = nextWindow;
-      nextWindow?.addEventListener("keydown", handleTimelineToggleHotkey);
+      nextWindow?.addEventListener("keydown", previewAppKeyDownHandler, true);
     },
-    [handleTimelineToggleHotkey],
+    [previewAppKeyDownHandler],
   );
 
   useEffect(
     () => () => {
       if (previewHotkeyWindowRef.current) {
-        previewHotkeyWindowRef.current.removeEventListener("keydown", handleTimelineToggleHotkey);
+        previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
         previewHotkeyWindowRef.current = null;
       }
     },
-    [handleTimelineToggleHotkey],
+    [previewAppKeyDownHandler],
   );
 
   const renderClipContent = useCallback(
@@ -1508,6 +1508,10 @@ export function StudioApp() {
       // Debounce the server write (600ms)
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
+        // Suppress the file-change watcher echo — the save callback triggers
+        // its own refresh, so a second one from the watcher causes a double-reload
+        // race that can leave the player in a non-playable state.
+        domEditSaveTimestampRef.current = Date.now();
         saveProjectFilesWithHistory({
           projectId: pid,
           label: "Edit source",
@@ -1606,6 +1610,7 @@ export function StudioApp() {
         throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
       }
 
+      domEditSaveTimestampRef.current = Date.now();
       await saveProjectFilesWithHistory({
         projectId: pid,
         label: "Move timeline clip",
@@ -1690,6 +1695,7 @@ export function StudioApp() {
         throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
       }
 
+      domEditSaveTimestampRef.current = Date.now();
       await saveProjectFilesWithHistory({
         projectId: pid,
         label: "Resize timeline clip",
@@ -1828,6 +1834,7 @@ export function StudioApp() {
           });
         }
 
+        domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Delete timeline clip",
@@ -1855,6 +1862,155 @@ export function StudioApp() {
     },
     [activeCompPath, editHistory.recordEdit, showToast, timelineElements, writeProjectFile],
   );
+
+  const handleDomEditElementDelete = useCallback(
+    async (selection: DomEditSelection) => {
+      const pid = projectIdRef.current;
+      if (!pid) return;
+
+      const targetPath = selection.sourceFile || activeCompPath || "index.html";
+      try {
+        const response = await fetch(
+          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+        );
+        if (!response.ok) throw new Error(`Failed to read ${targetPath}`);
+
+        const data = (await response.json()) as { content?: string };
+        const originalContent = data.content;
+        if (typeof originalContent !== "string")
+          throw new Error(`Missing file contents for ${targetPath}`);
+
+        const patchTarget: { id?: string; selector?: string; selectorIndex?: number } = selection.id
+          ? {
+              id: selection.id,
+              selector: selection.selector,
+              selectorIndex: selection.selectorIndex,
+            }
+          : selection.selector
+            ? { selector: selection.selector, selectorIndex: selection.selectorIndex }
+            : ({} as never);
+        if (!patchTarget.id && !patchTarget.selector) {
+          throw new Error("Selected element has no patchable target");
+        }
+
+        const removeResponse = await fetch(
+          `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: patchTarget }),
+          },
+        );
+        if (!removeResponse.ok) throw new Error(`Failed to delete element from ${targetPath}`);
+
+        const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
+        const patchedContent =
+          typeof removeData.content === "string" ? removeData.content : originalContent;
+
+        domEditSaveTimestampRef.current = Date.now();
+        await saveProjectFilesWithHistory({
+          projectId: pid,
+          label: "Delete element",
+          kind: "timeline",
+          files: { [targetPath]: patchedContent },
+          readFile: async () => originalContent,
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+        });
+
+        domEditSelectionRef.current = null;
+        domEditGroupSelectionsRef.current = [];
+        setDomEditSelection(null);
+        setDomEditGroupSelections([]);
+        usePlayerStore.getState().setSelectedElementId(null);
+        setRefreshKey((k) => k + 1);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to delete element";
+        showToast(message);
+      }
+    },
+    [activeCompPath, editHistory.recordEdit, showToast, writeProjectFile],
+  );
+
+  // ── Consolidated keyboard shortcuts ────────────────────────────────
+  // All app-level window keydown handlers live here.
+  // Component-scoped shortcuts (playback J/K/L/Space, caption nudge)
+  // stay in their respective hooks.
+  const handleToggleRef = useRef(handleTimelineToggleHotkey);
+  handleToggleRef.current = handleTimelineToggleHotkey;
+  const handleDeleteRef = useRef(handleTimelineElementDelete);
+  handleDeleteRef.current = handleTimelineElementDelete;
+  const handleDomEditDeleteRef = useRef(handleDomEditElementDelete);
+  handleDomEditDeleteRef.current = handleDomEditElementDelete;
+
+  handleAppKeyDownRef.current = (event: KeyboardEvent) => {
+    // Shift+T — toggle timeline
+    handleToggleRef.current(event);
+
+    // Cmd/Ctrl+Z — undo, Cmd/Ctrl+Shift+Z or Ctrl+Y — redo
+    if (event.metaKey || event.ctrlKey) {
+      if (!shouldIgnoreHistoryShortcut(event.target)) {
+        const key = event.key.toLowerCase();
+        if (key === "z" && !event.shiftKey) {
+          event.preventDefault();
+          void handleUndoRef.current();
+          return;
+        }
+        if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
+          event.preventDefault();
+          void handleRedoRef.current();
+          return;
+        }
+      }
+
+      // Cmd/Ctrl+1 — sidebar: Compositions tab
+      if (event.key === "1") {
+        event.preventDefault();
+        leftSidebarRef.current?.selectTab("compositions");
+        return;
+      }
+
+      // Cmd/Ctrl+2 — sidebar: Assets tab
+      if (event.key === "2") {
+        event.preventDefault();
+        leftSidebarRef.current?.selectTab("assets");
+        return;
+      }
+    }
+
+    // Delete / Backspace — remove selected element (timeline clip or preview selection)
+    if (
+      (event.key === "Delete" || event.key === "Backspace") &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !isEditableTarget(event.target)
+    ) {
+      const { selectedElementId, elements } = usePlayerStore.getState();
+      if (selectedElementId) {
+        const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+        if (element) {
+          event.preventDefault();
+          void handleDeleteRef.current(element);
+          return;
+        }
+      }
+      const domSelection = domEditSelectionRef.current;
+      if (domSelection) {
+        event.preventDefault();
+        void handleDomEditDeleteRef.current(domSelection);
+      }
+    }
+  };
+
+  // eslint-disable-next-line no-restricted-syntax
+  useEffect(() => {
+    function handleAppKeyDown(event: KeyboardEvent) {
+      handleAppKeyDownRef.current?.(event);
+    }
+    window.addEventListener("keydown", handleAppKeyDown, true);
+    return () => window.removeEventListener("keydown", handleAppKeyDown, true);
+  }, []);
 
   const handleBlockedTimelineEdit = useCallback(
     (_element: TimelineElement) => {
@@ -2345,6 +2501,8 @@ export function StudioApp() {
   handleUndoRef.current = handleUndo;
   handleRedoRef.current = handleRedo;
 
+  // History hotkey — no longer has its own window listener (consolidated
+  // handler covers it), but kept as a named callback for iframe forwarding.
   const handleHistoryHotkey = useCallback((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey)) return;
     if (shouldIgnoreHistoryShortcut(event.target)) return;
@@ -2359,12 +2517,6 @@ export function StudioApp() {
       void handleRedoRef.current();
     }
   }, []);
-
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    window.addEventListener("keydown", handleHistoryHotkey, true);
-    return () => window.removeEventListener("keydown", handleHistoryHotkey, true);
-  }, [handleHistoryHotkey]);
 
   const syncPreviewHistoryHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
@@ -3566,6 +3718,7 @@ export function StudioApp() {
           }),
         );
 
+        domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Add timeline asset",
@@ -4053,6 +4206,7 @@ export function StudioApp() {
           </div>
         ) : (
           <LeftSidebar
+            ref={leftSidebarRef}
             width={leftWidth}
             projectId={projectId}
             compositions={compositions}
