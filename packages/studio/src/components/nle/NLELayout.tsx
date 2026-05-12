@@ -51,17 +51,24 @@ interface NLELayoutProps {
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
   ) => Promise<void> | void;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
+  onSelectTimelineElement?: (element: TimelineElement | null) => void;
   /** Exposes the compIdToSrc map for parent components (e.g., useRenderClipContent) */
   onCompIdToSrcChange?: (map: Map<string, string>) => void;
   /** Whether the timeline panel is visible (default: true) */
   timelineVisible?: boolean;
   /** Callback to toggle timeline visibility */
   onToggleTimeline?: () => void;
+  /** Notifies parent when composition loading state changes */
+  onCompositionLoadingChange?: (loading: boolean) => void;
 }
 
 const MIN_TIMELINE_H = 100;
 const DEFAULT_TIMELINE_H = 220;
 const MIN_PREVIEW_H = 120;
+
+export function shouldDisableTimelineWhileCompositionLoading(compositionLoading: boolean): boolean {
+  return compositionLoading;
+}
 
 export const NLELayout = memo(function NLELayout({
   projectId,
@@ -80,16 +87,17 @@ export const NLELayout = memo(function NLELayout({
   onMoveElement,
   onResizeElement,
   onBlockedEditAttempt,
+  onSelectTimelineElement,
   onCompIdToSrcChange,
   timelineVisible,
   onToggleTimeline,
+  onCompositionLoadingChange: onCompositionLoadingChangeParent,
 }: NLELayoutProps) {
   const {
     iframeRef,
     togglePlay,
     seek,
     onIframeLoad: baseOnIframeLoad,
-    refreshPlayer,
     saveSeekPosition,
   } = useTimelinePlayer();
 
@@ -103,13 +111,15 @@ export const NLELayout = memo(function NLELayout({
     usePlayerStore.getState().reset();
   }
 
-  // Refresh the existing iframe in place when source files change.
+  // Save seek position before the Player component creates a new player
+  // on refreshKey change. The Player handles the actual reload via the
+  // dual-player crossfade; we just need to persist the current time.
   const prevRefreshKeyRef = useRef(refreshKey);
   useEffect(() => {
     if (refreshKey === prevRefreshKeyRef.current) return;
     prevRefreshKeyRef.current = refreshKey;
-    refreshPlayer();
-  }, [refreshKey, refreshPlayer]);
+    saveSeekPosition();
+  }, [refreshKey, saveSeekPosition]);
 
   // Wrap onIframeLoad to also notify parent of iframe ref
   const onIframeLoad = useCallback(() => {
@@ -201,6 +211,18 @@ export const NLELayout = memo(function NLELayout({
 
   // Resizable timeline height
   const [timelineH, setTimelineH] = useState(DEFAULT_TIMELINE_H);
+  const hasLoadedOnceRef = useRef(false);
+  const [compositionLoading, setCompositionLoadingRaw] = useState(true);
+  const setCompositionLoading = useCallback((loading: boolean) => {
+    if (!loading) hasLoadedOnceRef.current = true;
+    if (loading && hasLoadedOnceRef.current) return;
+    setCompositionLoadingRaw(loading);
+  }, []);
+  const timelineDisabled = shouldDisableTimelineWhileCompositionLoading(compositionLoading);
+
+  useEffect(() => {
+    onCompositionLoadingChangeParent?.(compositionLoading);
+  }, [compositionLoading, onCompositionLoadingChangeParent]);
   const isTimelineVisible = timelineVisible ?? true;
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -208,6 +230,10 @@ export const NLELayout = memo(function NLELayout({
   // Current preview URL — derived from composition stack
   const currentLevel = compositionStack[compositionStack.length - 1];
   const directUrl = compositionStack.length > 1 ? currentLevel.previewUrl : undefined;
+
+  useEffect(() => {
+    onIframeRef?.(iframeRef.current);
+  }, [compositionStack.length, onIframeRef, refreshKey, iframeRef]);
 
   // Save master seek position before drilling down so we can restore it on back-navigation.
   // saveSeekPosition() sets pendingSeekRef in useTimelinePlayer which onIframeLoad reads.
@@ -310,23 +336,31 @@ export const NLELayout = memo(function NLELayout({
   }, [activeCompositionPath, projectId, updateCompositionStack]);
 
   // Resize divider handlers
-  const handleDividerPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    isDragging.current = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
+  const handleDividerPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (timelineDisabled) return;
+      e.preventDefault();
+      isDragging.current = true;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [timelineDisabled],
+  );
 
-  const handleDividerPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const mouseY = e.clientY - rect.top;
-    const containerH = rect.height;
-    const newTimelineH = Math.max(
-      MIN_TIMELINE_H,
-      Math.min(containerH - MIN_PREVIEW_H, containerH - mouseY),
-    );
-    setTimelineH(newTimelineH);
-  }, []);
+  const handleDividerPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (timelineDisabled) return;
+      if (!isDragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const mouseY = e.clientY - rect.top;
+      const containerH = rect.height;
+      const newTimelineH = Math.max(
+        MIN_TIMELINE_H,
+        Math.min(containerH - MIN_PREVIEW_H, containerH - mouseY),
+      );
+      setTimelineH(newTimelineH);
+    },
+    [timelineDisabled],
+  );
 
   const handleDividerPointerUp = useCallback(() => {
     isDragging.current = false;
@@ -357,9 +391,11 @@ export const NLELayout = memo(function NLELayout({
             projectId={projectId}
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
+            onCompositionLoadingChange={setCompositionLoading}
             portrait={portrait}
             directUrl={directUrl}
             refreshKey={refreshKey}
+            suppressLoadingOverlay={hasLoadedOnceRef.current}
           />
           {previewOverlay}
         </div>
@@ -371,7 +407,7 @@ export const NLELayout = memo(function NLELayout({
               onNavigate={handleNavigateComposition}
             />
           )}
-          <PlayerControls onTogglePlay={togglePlay} onSeek={seek} />
+          <PlayerControls onTogglePlay={togglePlay} onSeek={seek} disabled={timelineDisabled} />
         </div>
       </div>
 
@@ -389,13 +425,18 @@ export const NLELayout = memo(function NLELayout({
           </div>
 
           {/* Timeline section — fixed height, resizable */}
-          <div className="flex flex-col flex-shrink-0" style={{ height: timelineH }}>
+          <div
+            className="relative flex flex-col flex-shrink-0"
+            style={{ height: timelineH }}
+            aria-disabled={timelineDisabled || undefined}
+          >
             {/* Timeline tracks */}
             <div
               // flex-col: toolbar takes natural height, Timeline fills remainder.
               className="flex flex-col flex-1 min-h-0 overflow-hidden bg-neutral-950"
               onDoubleClick={(e) => {
                 if ((e.target as HTMLElement).closest("[data-clip]")) return;
+                if (timelineDisabled) return;
                 if (compositionStack.length > 1) {
                   updateCompositionStack((prev) => prev.slice(0, -1));
                 }
@@ -412,9 +453,20 @@ export const NLELayout = memo(function NLELayout({
                 onMoveElement={onMoveElement}
                 onResizeElement={onResizeElement}
                 onBlockedEditAttempt={onBlockedEditAttempt}
+                onSelectElement={onSelectTimelineElement}
               />
             </div>
             {timelineFooter && <div className="flex-shrink-0">{timelineFooter}</div>}
+            {timelineDisabled && (
+              <div
+                className="absolute inset-0 z-30 cursor-not-allowed bg-black/18"
+                data-testid="timeline-loading-disabled-overlay"
+                aria-hidden="true"
+                onPointerDown={(event) => event.preventDefault()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => event.preventDefault()}
+              />
+            )}
           </div>
         </>
       ) : onToggleTimeline ? (

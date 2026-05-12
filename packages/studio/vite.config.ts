@@ -9,14 +9,20 @@ import {
   realpathSync,
 } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import type {
-  StudioApiAdapter,
-  ResolvedProject,
-  RenderJobState,
+import { createHash } from "node:crypto";
+import {
+  type ResolvedProject,
+  type RenderJobState,
+  type StudioApiAdapter,
 } from "@hyperframes/core/studio-api";
 import { createProjectSignature } from "../core/src/studio-api/helpers/projectSignature";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { readNodeRequestBody } from "./vite.request-body.js";
+import {
+  createStudioDevRenderBodyScripts,
+  readStudioDevManualEditManifestContent,
+  readStudioDevMotionManifestContent,
+} from "./vite.studioMotion";
 import { seekThumbnailPreview } from "./vite.thumbnail";
 
 // ── Shared Puppeteer browser ─────────────────────────────────────────────────
@@ -28,50 +34,63 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
   if (_browser?.connected) return _browser;
   if (_browserLaunchPromise) return _browserLaunchPromise;
   _browserLaunchPromise = (async () => {
-    try {
-      const puppeteer = await import("puppeteer-core");
-      const executablePath = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/usr/bin/google-chrome",
-        "/usr/bin/chromium-browser",
-      ].find((p) => existsSync(p));
-      if (!executablePath) return null;
-      _browser = await puppeteer.default.launch({
-        headless: true,
-        executablePath,
-        // 10s is enough for any healthy local launch; the default 30s lets a
-        // wedged handshake stall every pending thumbnail before failing.
-        timeout: 10_000,
-        args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
-      });
-      return _browser;
-    } catch (err) {
-      // Without this guard, a launch failure (timeout, missing libs, etc.)
-      // surfaces as an unhandled rejection through puppeteer's internal RxJS
-      // chain and crashes the Vite dev server. Log + degrade gracefully —
-      // the thumbnail route returns a 500 and the rest of the studio keeps
-      // working.
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[Studio] puppeteer launch failed — thumbnails disabled: ${msg}`);
-      return null;
-    } finally {
-      // Reset on every outcome so a transient failure doesn't poison the
-      // singleton: subsequent thumbnail requests can retry the launch.
-      _browserLaunchPromise = null;
-    }
+    const puppeteer = await import("puppeteer-core");
+    const executablePath = [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/usr/bin/google-chrome",
+      "/usr/bin/chromium-browser",
+    ].find((p) => existsSync(p));
+    if (!executablePath) return null;
+    _browser = await puppeteer.default.launch({
+      headless: true,
+      executablePath,
+      args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+    });
+    _browserLaunchPromise = null;
+    return _browser;
   })();
   return _browserLaunchPromise;
 }
 
 // In-flight thumbnail dedup
 const _thumbnailInflight = new Map<string, Promise<Buffer>>();
-const THUMBNAIL_CACHE_VERSION = "v3";
+const THUMBNAIL_CACHE_VERSION = "v4";
 
 interface ScreenshotClip {
   x: number;
   y: number;
   width: number;
   height: number;
+}
+
+async function applyStudioRenderBodyScriptsToThumbnailPage(
+  page: import("puppeteer-core").Page,
+  projectDir: string,
+  activeCompositionPath: string,
+): Promise<void> {
+  const scripts = createStudioDevRenderBodyScripts(projectDir, {
+    activeCompositionPath,
+  });
+  for (const script of scripts) {
+    await page.addScriptTag({ content: script });
+  }
+}
+
+async function reapplyStudioRenderBodyScriptsToThumbnailPage(
+  page: import("puppeteer-core").Page,
+): Promise<void> {
+  await page.evaluate(() => {
+    const runtimeWindow = window as Window & {
+      __hfStudioManualEditsApply?: () => number;
+      __hfStudioMotionApply?: () => number;
+    };
+    if (typeof runtimeWindow.__hfStudioManualEditsApply === "function") {
+      runtimeWindow.__hfStudioManualEditsApply();
+    }
+    if (typeof runtimeWindow.__hfStudioMotionApply === "function") {
+      runtimeWindow.__hfStudioMotionApply();
+    }
+  });
 }
 
 function isPathWithin(parentDir: string, childPath: string): boolean {
@@ -89,20 +108,23 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
   let _bundler:
     | ((dir: string, options?: { runtime?: "inline" | "placeholder" }) => Promise<string>)
     | null = null;
-  let _producerModulePromise: Promise<{
-    createRenderJob: (config: {
-      fps: import("@hyperframes/core").Fps;
-      quality: "draft" | "standard" | "high";
-      format: string;
-      outputResolution?: "landscape" | "portrait" | "landscape-4k" | "portrait-4k";
-    }) => unknown;
-    executeRenderJob: (
-      job: unknown,
-      projectDir: string,
-      outputPath: string,
-      onProgress?: (job: { progress: number; currentStage?: string }) => void,
-    ) => Promise<void>;
-  }> | null = null;
+  let _producerModuleLoader:
+    | (() => Promise<{
+        createRenderJob: (config: {
+          fps: 24 | 30 | 60;
+          quality: "draft" | "standard" | "high";
+          format: string;
+          renderBodyScripts?: string[];
+          outputResolution?: "landscape" | "portrait" | "landscape-4k" | "portrait-4k";
+        }) => unknown;
+        executeRenderJob: (
+          job: unknown,
+          projectDir: string,
+          outputPath: string,
+          onProgress?: (job: { progress: number; currentStage?: string }) => void,
+        ) => Promise<void>;
+      }>)
+    | null = null;
   const projectSignatureCache = new Map<string, string>();
   server.watcher.on("all", (_event, file) => {
     for (const projectDir of projectSignatureCache.keys()) {
@@ -123,8 +145,8 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
   };
 
   const getProducerModule = async () => {
-    if (!_producerModulePromise) {
-      _producerModulePromise = createRetryingModuleLoader(async () => {
+    if (!_producerModuleLoader) {
+      _producerModuleLoader = createRetryingModuleLoader(async () => {
         const { built } = ensureProducerDist({
           studioDir: __dirname,
           env: process.env,
@@ -136,9 +158,9 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
         }
         const producerPkg = "@hyperframes/producer";
         return await import(/* @vite-ignore */ producerPkg);
-      })();
+      });
     }
-    return _producerModulePromise();
+    return _producerModuleLoader();
   };
 
   return {
@@ -258,6 +280,7 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
             if (systemChrome) process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChrome;
           }
           const { createRenderJob, executeRenderJob } = await getProducerModule();
+          const renderBodyScripts = createStudioDevRenderBodyScripts(opts.project.dir);
           const job = createRenderJob({
             // opts.fps is already an Fps rational — the studio-api route
             // normalized any wire-format `number | string` into the structured
@@ -265,6 +288,7 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
             fps: opts.fps,
             quality: opts.quality as "draft" | "standard" | "high",
             format: opts.format,
+            ...(renderBodyScripts.length > 0 ? { renderBodyScripts } : {}),
             outputResolution: opts.outputResolution,
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
@@ -296,71 +320,106 @@ function createViteAdapter(dataDir: string, server: ViteDevServer): StudioApiAda
 
     async generateThumbnail(opts) {
       const selectorKey = opts.selector
-        ? `_${opts.selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}`
+        ? `_${opts.selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}_${opts.selectorIndex ?? 0}`
         : "";
-      const cacheKey = `${THUMBNAIL_CACHE_VERSION}_${opts.compPath.replace(/\//g, "_")}_${opts.seekTime.toFixed(2)}${selectorKey}.jpg`;
+      const manualManifestContent = readStudioDevManualEditManifestContent(opts.project.dir);
+      const manualManifestKey = manualManifestContent.trim()
+        ? `_${createHash("sha1").update(manualManifestContent).digest("hex").slice(0, 16)}`
+        : "";
+      const motionManifestContent = readStudioDevMotionManifestContent(opts.project.dir);
+      const motionManifestKey = motionManifestContent.trim()
+        ? `_${createHash("sha1").update(motionManifestContent).digest("hex").slice(0, 16)}`
+        : "";
+      const cacheKey = `${THUMBNAIL_CACHE_VERSION}${manualManifestKey}${motionManifestKey}_${opts.compPath.replace(/\//g, "_")}_${opts.seekTime.toFixed(2)}${selectorKey}.${opts.format === "png" ? "png" : "jpg"}`;
 
       let bufferPromise = _thumbnailInflight.get(cacheKey);
       if (!bufferPromise) {
         bufferPromise = (async () => {
           const browser = await getSharedBrowser();
           if (!browser) return null;
-          const page = await browser.newPage();
-          await page.setViewport({
-            width: opts.width,
-            height: opts.height,
-            deviceScaleFactor: opts.format === "png" ? 1 : 0.5,
-          });
-          await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
-          await page.evaluate(() => {
-            document.documentElement.style.background = "#000";
-            document.body.style.background = "#000";
-            document.body.style.margin = "0";
-            document.body.style.overflow = "hidden";
-          });
-          await page
-            .waitForFunction(
-              `!!(window.__timelines && Object.keys(window.__timelines).length > 0)`,
-              { timeout: 5000 },
-            )
-            .catch(() => {});
-          await seekThumbnailPreview(page, opts.seekTime);
-          await page.evaluate("document.fonts?.ready");
-          await new Promise((r) => setTimeout(r, 200));
-          let clip: ScreenshotClip | undefined;
-          if (opts.selector) {
-            clip = await page.evaluate((selector: string) => {
-              const el = document.querySelector(selector);
-              if (!(el instanceof HTMLElement)) return undefined;
-              const rect = el.getBoundingClientRect();
-              if (rect.width < 4 || rect.height < 4) return undefined;
-              const pad = 8;
-              const x = Math.max(0, rect.left - pad);
-              const y = Math.max(0, rect.top - pad);
-              const maxWidth = window.innerWidth - x;
-              const maxHeight = window.innerHeight - y;
-              return {
-                x,
-                y,
-                width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
-                height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
-              };
-            }, opts.selector);
-          }
-          const buf = await page.screenshot(
-            opts.format === "png"
-              ? {
-                  type: "png",
-                  ...(clip ? { clip } : {}),
-                }
-              : {
-                  type: "jpeg",
-                  quality: 75,
-                  ...(clip ? { clip } : {}),
+          let page: Awaited<ReturnType<typeof browser.newPage>> | null = null;
+          try {
+            page = await browser.newPage();
+            await page.setViewport({
+              width: opts.width,
+              height: opts.height,
+              deviceScaleFactor: opts.format === "png" ? 1 : 0.5,
+            });
+            await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+            await page.evaluate(() => {
+              document.documentElement.style.background = "#000";
+              document.body.style.background = "#000";
+              document.body.style.margin = "0";
+              document.body.style.overflow = "hidden";
+            });
+            await page
+              .waitForFunction(
+                `!!(window.__timelines && Object.keys(window.__timelines).length > 0)`,
+                { timeout: 5000 },
+              )
+              .catch(() => {});
+            await seekThumbnailPreview(page, opts.seekTime);
+            await applyStudioRenderBodyScriptsToThumbnailPage(
+              page,
+              opts.project.dir,
+              opts.compPath,
+            );
+            await page.evaluate("document.fonts?.ready");
+            await new Promise((r) => setTimeout(r, 200));
+            await reapplyStudioRenderBodyScriptsToThumbnailPage(page);
+            let clip: ScreenshotClip | undefined;
+            if (opts.selector) {
+              clip = await page.evaluate(
+                (selector: string, selectorIndex: number | undefined) => {
+                  const matches = Array.from(document.querySelectorAll(selector)).filter(
+                    (el): el is HTMLElement => el instanceof HTMLElement,
+                  );
+                  const safeIndex = Math.max(
+                    0,
+                    Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)),
+                  );
+                  const el = matches[safeIndex] ?? null;
+                  if (!(el instanceof HTMLElement)) return undefined;
+                  const rect = el.getBoundingClientRect();
+                  if (rect.width < 4 || rect.height < 4) return undefined;
+                  const pad = 8;
+                  const x = Math.max(0, rect.left - pad);
+                  const y = Math.max(0, rect.top - pad);
+                  const maxWidth = window.innerWidth - x;
+                  const maxHeight = window.innerHeight - y;
+                  return {
+                    x,
+                    y,
+                    width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
+                    height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
+                  };
                 },
-          );
-          await page.close();
-          return buf as Buffer;
+                opts.selector,
+                opts.selectorIndex,
+              );
+            }
+            const buf = await page.screenshot(
+              opts.format === "png"
+                ? {
+                    type: "png",
+                    ...(clip ? { clip } : {}),
+                  }
+                : {
+                    type: "jpeg",
+                    quality: 75,
+                    ...(clip ? { clip } : {}),
+                  },
+            );
+            await page.close();
+            return buf as Buffer;
+          } catch (err) {
+            if (page) await page.close().catch(() => {});
+            console.warn(
+              "[Studio] Thumbnail generation failed:",
+              err instanceof Error ? err.message : err,
+            );
+            return null;
+          }
         })();
         _thumbnailInflight.set(cacheKey, bufferPromise);
         bufferPromise.finally(() => _thumbnailInflight.delete(cacheKey));
@@ -543,10 +602,13 @@ function devProjectApi(): Plugin {
         const isProjectFile = realProjectPaths.some((p) => filePath.startsWith(p));
         if (
           isProjectFile &&
-          (filePath.endsWith(".html") || filePath.endsWith(".css") || filePath.endsWith(".js"))
+          (filePath.endsWith(".html") ||
+            filePath.endsWith(".css") ||
+            filePath.endsWith(".js") ||
+            filePath.endsWith(".json"))
         ) {
           console.log(`[Studio] File changed: ${filePath}`);
-          server.ws.send({ type: "custom", event: "hf:file-change", data: {} });
+          server.ws.send({ type: "custom", event: "hf:file-change", data: { path: filePath } });
         }
       });
     },
