@@ -260,6 +260,33 @@ export function _resetSoftwareGuardWarnedForTests(): void {
   _softwareGuardWarned = false;
 }
 
+/**
+ * Opt-in: force `captureMode = "screenshot"` whenever the GPU resolves to
+ * "software" (no hardware WebGL).
+ *
+ * Why opt-in rather than always-on: GitHub Actions runners and other common
+ * SwiftShader hosts report "software" from the WebGL probe but
+ * `HeadlessExperimental.beginFrame` works reliably on them — so a blanket
+ * software → screenshot flip pessimizes mainstream CI by ~1.5 min on
+ * shader/composition-heavy fixtures and exceeds `ffmpegStreamingTimeout` on
+ * the largest renders.
+ *
+ * The runtime probe (`probeBeginFrameSupport` below) already catches actual
+ * BeginFrame *unavailability*. This env var exists for hosts where BeginFrame
+ * is technically present but the compositor stalls under shader load (the
+ * CPU-only Linux sandbox where hf#677 was reproduced). Operators on such
+ * hosts set `HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU=1` to short-circuit
+ * BeginFrame entirely.
+ *
+ * Accepts the same truthy values as other engine env flags (`"1"`, `"true"`).
+ */
+export function isSoftwareScreenshotGuardEnabled(): boolean {
+  const raw = process.env.HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU;
+  if (!raw) return false;
+  const v = raw.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
 export interface AcquireBrowserOptions {
   /**
    * If the caller already resolved `browserGpuMode` (e.g. `frameCapture.ts`
@@ -301,31 +328,32 @@ export async function acquireBrowser(
   const isLinux = process.platform === "linux";
   const forceScreenshot = config?.forceScreenshot ?? DEFAULT_CONFIG.forceScreenshot;
 
-  // Resolve browserGpuMode. On software-renderer hosts (no hardware GPU /
-  // SwiftShader) HeadlessExperimental.beginFrame is unreliable — the
-  // compositor stalls indefinitely on shader-heavy frames and the CDP call
-  // times out at protocolTimeout (default 5 min). Force screenshot mode
-  // whenever resolveBrowserGpuMode resolves to "software", independent of
-  // platform/binary. This is a separate defense from the producer-side
-  // `captureHdrStage` guard (which unconditionally forces screenshot for the
-  // HDR layered-composite path); this guard covers the SDR-render-on-software-
-  // host case that captureHdrStage doesn't touch.
+  // The software-renderer screenshot guard is opt-in (see
+  // `isSoftwareScreenshotGuardEnabled` above). Skip the GPU probe entirely
+  // unless the guard is enabled — the probe launches a throwaway Chrome to
+  // run a WebGL availability check, so paying for it on every render when
+  // the result is unused is wasteful. Operators on stall-prone hosts set
+  // `HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU=1` and accept the probe
+  // cost as part of that contract.
   //
   // If the caller has already resolved the mode (frameCapture.ts does) it
   // hands us the value via options.resolvedBrowserGpuMode to avoid a second
   // resolution from raw config. The probe Promise is cached for the process
-  // lifetime so the fallback path is still cheap.
-  let resolvedGpuMode: "software" | "hardware";
-  if (options.resolvedBrowserGpuMode) {
-    resolvedGpuMode = options.resolvedBrowserGpuMode;
-  } else {
-    const browserGpuMode = config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode;
-    resolvedGpuMode = await resolveBrowserGpuMode(browserGpuMode, {
-      chromePath: headlessShell ?? undefined,
-      browserTimeout: config?.browserTimeout,
-    });
+  // lifetime so even when both paths fire, only one Chrome launch happens.
+  const guardEnabled = isSoftwareScreenshotGuardEnabled();
+  let resolvedGpuMode: "software" | "hardware" | undefined;
+  if (guardEnabled) {
+    if (options.resolvedBrowserGpuMode) {
+      resolvedGpuMode = options.resolvedBrowserGpuMode;
+    } else {
+      const browserGpuMode = config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode;
+      resolvedGpuMode = await resolveBrowserGpuMode(browserGpuMode, {
+        chromePath: headlessShell ?? undefined,
+        browserTimeout: config?.browserTimeout,
+      });
+    }
   }
-  const isSoftwareRenderer = resolvedGpuMode === "software";
+  const isSoftwareRenderer = guardEnabled && resolvedGpuMode === "software";
 
   let captureMode: CaptureMode;
   let executablePath: string | undefined;

@@ -18,6 +18,7 @@ import {
   releaseBrowser,
   forceReleaseBrowser,
   buildChromeArgs,
+  isSoftwareScreenshotGuardEnabled,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
   type CaptureMode,
@@ -195,27 +196,35 @@ export async function createCaptureSession(
   // need explicit clip+scale on `Page.captureScreenshot`, so fall back to
   // the screenshot path for any DPR > 1.
   const supersampling = (options.deviceScaleFactor ?? 1) > 1;
+  // Mirror the software-renderer guard in `acquireBrowser`. The guard is
+  // opt-in (env var `HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU`); when it
+  // is off we skip the GPU probe entirely to avoid the extra Chrome launch.
+  // When on, the probe Promise is cached for the process lifetime, so
+  // resolving here and threading the result to acquireBrowser collapses to
+  // a single probe.
+  const guardEnabled = isSoftwareScreenshotGuardEnabled();
   const requestedGpuMode = config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode;
-  const resolvedGpuMode = await resolveBrowserGpuMode(requestedGpuMode, {
-    chromePath: headlessShell ?? undefined,
-    browserTimeout: config?.browserTimeout,
-  });
-  // Mirror the software-renderer guard in `acquireBrowser`: on a software
-  // host the BeginFrame compositor stalls, so build the chromeArgs without
-  // BeginFrame flags up-front. acquireBrowser will also strip them as a
-  // belt-and-braces measure, but doing it here keeps the launch args clean.
+  const resolvedGpuMode = guardEnabled
+    ? await resolveBrowserGpuMode(requestedGpuMode, {
+        chromePath: headlessShell ?? undefined,
+        browserTimeout: config?.browserTimeout,
+      })
+    : undefined;
+  const isSoftwareRenderer = guardEnabled && resolvedGpuMode === "software";
   const preMode: CaptureMode =
-    headlessShell && isLinux && !forceScreenshot && !supersampling && resolvedGpuMode !== "software"
+    headlessShell && isLinux && !forceScreenshot && !supersampling && !isSoftwareRenderer
       ? "beginframe"
       : "screenshot";
   const chromeArgs = buildChromeArgs(
     { width: options.width, height: options.height, captureMode: preMode },
-    { ...config, browserGpuMode: resolvedGpuMode },
+    resolvedGpuMode ? { ...config, browserGpuMode: resolvedGpuMode } : config,
   );
 
-  // Thread the already-resolved GPU mode into acquireBrowser so it doesn't
-  // re-resolve from raw config. Promise-cached anyway, but removes the smell
-  // of two parallel resolutions that future refactors could let diverge.
+  // Thread the already-resolved GPU mode into acquireBrowser when available
+  // so it doesn't re-resolve from raw config. (Both sides agree on whether
+  // the guard is enabled because they read the same env var; if the env var
+  // flips between these two calls — basically only possible in tests — the
+  // guard semantics fall back to acquireBrowser's own resolution.)
   const { browser, captureMode } = await acquireBrowser(chromeArgs, config, {
     resolvedBrowserGpuMode: resolvedGpuMode,
   });

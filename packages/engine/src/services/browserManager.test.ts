@@ -128,14 +128,18 @@ describe("resolveBrowserGpuMode", () => {
   });
 });
 
-describe("acquireBrowser — software-renderer guard", () => {
-  // Tests for the defense-in-depth rule that a "software"-resolved GPU mode
-  // must force `captureMode = "screenshot"` regardless of platform/binary.
-  // Without this guard, BeginFrame attempts on a software-rendered compositor
-  // hang at the CDP protocolTimeout (the hf#677 spike repro). Tests below
-  // mock puppeteer at the module-import level so no real Chrome is launched.
+describe("acquireBrowser — software-renderer guard (opt-in)", () => {
+  // Tests for the opt-in rule that, when
+  // `HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU=1` is set, a
+  // "software"-resolved GPU mode must force `captureMode = "screenshot"`
+  // regardless of platform/binary. Without the env var the guard is dormant —
+  // mainstream CI hosts (SwiftShader on GitHub runners) report "software" but
+  // BeginFrame works on them, and pessimizing those hosts caused regressions
+  // on the largest fixtures (hf#822). Tests below mock puppeteer at the
+  // module-import level so no real Chrome is launched.
 
   const origPlatform = process.platform;
+  const origGuardEnv = process.env.HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU;
 
   // Captures the most recent puppeteer.launch call so tests can assert on the
   // args/executablePath actually passed to Chrome.
@@ -173,16 +177,25 @@ describe("acquireBrowser — software-renderer guard", () => {
     // `vi.resetModules()` already gives each test a fresh `browserManager.js`
     // module — so `_softwareGuardWarned` starts at false per test. No
     // additional reset needed.
+    // Default: guard ON for the bulk of tests in this block (they exercise
+    // the guard's behavior). Individual tests opt back to "guard OFF" by
+    // deleting the env var.
+    process.env.HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU = "1";
   });
 
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
+    if (origGuardEnv === undefined) {
+      delete process.env.HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU;
+    } else {
+      process.env.HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU = origGuardEnv;
+    }
     vi.restoreAllMocks();
     vi.doUnmock("puppeteer");
     vi.doUnmock("puppeteer-core");
   });
 
-  it("forces screenshot capture mode when browserGpuMode resolves to 'software' on Linux", async () => {
+  it("forces screenshot capture mode when browserGpuMode resolves to 'software' on Linux (guard enabled)", async () => {
     installPuppeteerMock();
     const { acquireBrowser: acquire } = await import("./browserManager.js");
 
@@ -208,6 +221,27 @@ describe("acquireBrowser — software-renderer guard", () => {
     expect(lastLaunchArgs).not.toContain("--deterministic-mode");
     expect(lastLaunchArgs).not.toContain("--run-all-compositor-stages-before-draw");
     expect(lastLaunchArgs).toContain("--no-sandbox");
+  });
+
+  it("KEEPS beginframe capture mode on Linux+software when the guard is NOT enabled (default)", async () => {
+    // Mirror of the "forces screenshot" test above with the guard OFF — this
+    // is the production default that mainstream CI hits. Without this, GH
+    // Actions runners (SwiftShader, reports "software") regress to screenshot
+    // mode and the streaming encoder times out on shader-heavy fixtures
+    // (hf#822 regression on overlay-montage-prod, sub-composition-video,
+    // style-13-prod).
+    delete process.env.HYPERFRAMES_FORCE_SCREENSHOT_ON_SOFTWARE_GPU;
+    installPuppeteerMock();
+    const { acquireBrowser: acquire } = await import("./browserManager.js");
+
+    const chromeArgs = ["--no-sandbox", "--enable-begin-frame-control"];
+    const result = await acquire(chromeArgs, {
+      chromePath: "/fake/chrome-headless-shell",
+      browserGpuMode: "software",
+    });
+
+    expect(result.captureMode).toBe("beginframe");
+    expect(lastLaunchArgs).toContain("--enable-begin-frame-control");
   });
 
   it("keeps beginframe capture mode when browserGpuMode is 'hardware' on Linux with headless-shell", async () => {
