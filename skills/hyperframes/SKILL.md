@@ -15,6 +15,8 @@ For open-ended requests ("make me a product launch video", "create something for
 
 Extract what you can from the prompt itself — only ask about what's genuinely missing. Ask **one question at a time** and let each answer inform the next. Combine two questions in one message when they're naturally related, but never dump a list.
 
+**Format each question as a lettered multiple choice** (A, B, C, D) so the user can respond with just a letter. Include 2-4 contextual options plus the option to give a custom answer. Tailor the options to the specific prompt — don't use generic choices.
+
 The questions (in rough priority order):
 
 - **Audience** — who watches this? (Developers, executives, consumers — changes type scale, density, easing)
