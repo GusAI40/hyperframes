@@ -2410,9 +2410,9 @@
         }
 
         selectedMood = 0;
-        setTimeout(function() {
-          goToTune();
-          // Replace scene grid with template iframe
+        goToTune();
+        // Replace scene grid with template iframe
+        (function() {
           if (pick.slug) {
             var grid = document.getElementById("sc-scene-grid");
             if (grid) {
@@ -2478,7 +2478,7 @@
               });
             }
           }
-        }, 300);
+        })();
       }
       window.addEventListener("message", function(e) {
         if (e.data && e.data.type === "templatePick") handleTemplatePick(e.data);
