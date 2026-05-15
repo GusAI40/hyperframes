@@ -230,6 +230,13 @@ Generate a JSON object with three keys. This is the creative work — match ever
 | `labels`     | ALL-CAPS chip/tag labels                                                             | 12+ strings  | `"ESPRESSO", "COLD BREW", "SUBSCRIPTION"`                                   |
 | `smalls`     | CTAs, links, small UI text                                                           | 12+ strings  | `"Shop Now →", "Free Shipping", "Our Story"`                                |
 
+**Vary word counts within each pool.** The template picker matches replacement text to the original's word count to preserve layout. If every headline is 5 words, a template with a 2-word heading slot has no good match. Include a range:
+
+- `headlines`: mix of 2-word (`"Zero Compromise."`), 4-word (`"From Farm to Cup"`), and 6+ word entries
+- `body`: mix of 1-sentence (10-15 words) and 2-sentence (20-30 words) entries
+- `smalls`: mix of 1-word (`"Subscribe"`), 2-word (`"Shop Now"`), and 3-word (`"See the Farms"`) entries
+- `labels`: keep these 1-2 words each (they replace chip/tag text)
+
 The `taglines` object controls the display-level text per template. Each template gets assigned a tone based on its metadata:
 
 - `dark` — templates with `scheme: "dark"`
