@@ -26,12 +26,17 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { HOST_CHROME_FAILURE_PATTERNS } from "./__test_utils__/hostChromeFailures.js";
 import { plan } from "./plan.js";
 import { renderChunk } from "./renderChunk.js";
 
-// Tiny composition shared by both subtests. 5 frames at 30fps lands a chunk
-// within a few seconds inside Docker and keeps host runs (where this test
-// soft-skips most of the time) cheap when they do exercise the full path.
+// Tiny composition shared by every subtest. 5 frames at 30fps + chunkSize=2
+// lands three chunks of sizes [2, 2, 1] within a few seconds inside Docker
+// and keeps host runs (where this test soft-skips most of the time) cheap
+// when they do exercise the full path. We assert byte-identity on chunk 0
+// (the always-special first chunk) and chunk 1 (the smallest non-zero
+// chunk index, exercising the seek-offset + frame-indexing code path that
+// a regression specific to chunks N>0 would land in).
 const FIXTURE_HTML = `<!doctype html>
 <html>
 <head><meta charset="utf-8"><title>cross-worker idempotency fixture</title></head>
@@ -42,11 +47,16 @@ const FIXTURE_HTML = `<!doctype html>
 </body>
 </html>`;
 
-// Patterns that indicate a host's chrome-headless-shell can't render — same
-// set `renderChunk.test.ts` uses. We soft-skip rather than fail; the docker
-// harness covers the determinism contract against a known-good image.
-const HOST_CHROME_FAILURE_PATTERNS =
-  /chrome:\/\/gpu|BROWSER_GPU_NOT_SOFTWARE|SwiftShader|HeadlessExperimental\.beginFrame|Target closed/i;
+// Force multi-chunk plans on a tiny fixture. With 5 frames the resolver
+// produces chunks of sizes [2, 2, 1] — enough to cover chunkIndex 0 + a
+// non-zero chunk without inflating render wall time.
+const PLAN_CHUNK_SIZE = 2;
+
+// Subtests render this set of chunk indices, twice each, and assert every
+// pair is byte-identical. Chunk 0 is the always-present special case;
+// chunk 1 catches regressions in the seek-offset / frame-indexing logic
+// that would only fire for chunks N>0.
+const CHUNK_INDICES_UNDER_TEST = [0, 1] as const;
 
 let runRoot: string;
 let projectDir: string;
@@ -75,7 +85,7 @@ beforeAll(async () => {
   try {
     await plan(
       projectDir,
-      { fps: 30, width: 160, height: 120, format: "png-sequence" },
+      { fps: 30, width: 160, height: 120, format: "png-sequence", chunkSize: PLAN_CHUNK_SIZE },
       pngPlanDir,
     );
     pngPlanReady = true;
@@ -90,7 +100,11 @@ beforeAll(async () => {
   mp4PlanDir = join(runRoot, "plan-mp4");
   mkdirSync(mp4PlanDir, { recursive: true });
   try {
-    await plan(projectDir, { fps: 30, width: 160, height: 120, format: "mp4" }, mp4PlanDir);
+    await plan(
+      projectDir,
+      { fps: 30, width: 160, height: 120, format: "mp4", chunkSize: PLAN_CHUNK_SIZE },
+      mp4PlanDir,
+    );
     mp4PlanReady = true;
   } catch (err) {
     console.warn(
@@ -140,88 +154,94 @@ function assertBytesEqual(
 
 describe("cross-worker idempotency", () => {
   // Generous timeout for slower CI: cold Chrome start + 5-frame capture +
-  // ffmpeg encode is the dominant cost, repeated twice.
+  // ffmpeg encode is the dominant cost, repeated twice per chunk index. With
+  // PLAN_CHUNK_SIZE=2 each chunk has at most 2 frames, so cold-start
+  // dominates even when iterating multiple indices.
   const TIMEOUT_MS = 120_000;
 
-  it(
-    "png-sequence: chunk 0 is byte-identical across two distinct output dirs",
-    async () => {
-      if (!pngPlanReady) {
-        console.warn(
-          "[crossWorkerIdempotency.test] skipping png-sequence — plan() didn't complete on host",
-        );
-        return;
-      }
-      const outA = join(runRoot, "pngseq-chunk-a");
-      const outB = join(runRoot, "pngseq-chunk-b");
-      let a, b;
-      try {
-        a = await renderChunk(pngPlanDir, 0, outA);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (HOST_CHROME_FAILURE_PATTERNS.test(message)) {
+  for (const chunkIndex of CHUNK_INDICES_UNDER_TEST) {
+    it(
+      `png-sequence: chunk ${chunkIndex} is byte-identical across two distinct output dirs`,
+      async () => {
+        if (!pngPlanReady) {
           console.warn(
-            "[crossWorkerIdempotency.test] skipping png-sequence — host Chrome can't render. ",
-            "Diagnostic:",
-            message.slice(0, 240),
+            `[crossWorkerIdempotency.test] skipping png-sequence chunk ${chunkIndex} — plan() didn't complete on host`,
           );
           return;
         }
-        throw err;
-      }
-      b = await renderChunk(pngPlanDir, 0, outB);
+        const outA = join(runRoot, `pngseq-chunk-${chunkIndex}-a`);
+        const outB = join(runRoot, `pngseq-chunk-${chunkIndex}-b`);
+        let a, b;
+        try {
+          a = await renderChunk(pngPlanDir, chunkIndex, outA);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (HOST_CHROME_FAILURE_PATTERNS.test(message)) {
+            console.warn(
+              `[crossWorkerIdempotency.test] skipping png-sequence chunk ${chunkIndex} — host Chrome can't render. `,
+              "Diagnostic:",
+              message.slice(0, 240),
+            );
+            return;
+          }
+          throw err;
+        }
+        b = await renderChunk(pngPlanDir, chunkIndex, outB);
 
-      expect(a.outputKind).toBe("frame-dir");
-      expect(b.outputKind).toBe("frame-dir");
-      expect(a.framesEncoded).toBeGreaterThan(0);
-      expect(b.framesEncoded).toBe(a.framesEncoded);
+        expect(a.outputKind).toBe("frame-dir");
+        expect(b.outputKind).toBe("frame-dir");
+        expect(a.framesEncoded).toBeGreaterThan(0);
+        expect(b.framesEncoded).toBe(a.framesEncoded);
 
-      // sha256 fingerprint match — the contract `ChunkResult.sha256` implies.
-      expect(a.sha256).toBe(b.sha256);
-      // Independent byte-level verification. If the sha256 helper ever
-      // regresses (e.g. starts hashing metadata instead of pixels), this
-      // assertion still fails the test honestly.
-      assertBytesEqual(outA, outB, "frame-dir", "png-sequence chunk 0");
-    },
-    TIMEOUT_MS,
-  );
+        // sha256 fingerprint match — the contract `ChunkResult.sha256` implies.
+        expect(a.sha256).toBe(b.sha256);
+        // Independent byte-level verification. If the sha256 helper ever
+        // regresses (e.g. starts hashing metadata instead of pixels), this
+        // assertion still fails the test honestly.
+        assertBytesEqual(outA, outB, "frame-dir", `png-sequence chunk ${chunkIndex}`);
+      },
+      TIMEOUT_MS,
+    );
 
-  it(
-    "mp4: chunk 0 is byte-identical across two distinct output paths",
-    async () => {
-      if (!mp4PlanReady) {
-        console.warn("[crossWorkerIdempotency.test] skipping mp4 — plan() didn't complete on host");
-        return;
-      }
-      const outDir = join(runRoot, "mp4-chunks");
-      mkdirSync(outDir, { recursive: true });
-      const outA = join(outDir, "chunk-a.mp4");
-      const outB = join(outDir, "chunk-b.mp4");
-      let a, b;
-      try {
-        a = await renderChunk(mp4PlanDir, 0, outA);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (HOST_CHROME_FAILURE_PATTERNS.test(message)) {
+    it(
+      `mp4: chunk ${chunkIndex} is byte-identical across two distinct output paths`,
+      async () => {
+        if (!mp4PlanReady) {
           console.warn(
-            "[crossWorkerIdempotency.test] skipping mp4 — host Chrome can't render. ",
-            "Diagnostic:",
-            message.slice(0, 240),
+            `[crossWorkerIdempotency.test] skipping mp4 chunk ${chunkIndex} — plan() didn't complete on host`,
           );
           return;
         }
-        throw err;
-      }
-      b = await renderChunk(mp4PlanDir, 0, outB);
+        const outDir = join(runRoot, "mp4-chunks");
+        mkdirSync(outDir, { recursive: true });
+        const outA = join(outDir, `chunk-${chunkIndex}-a.mp4`);
+        const outB = join(outDir, `chunk-${chunkIndex}-b.mp4`);
+        let a, b;
+        try {
+          a = await renderChunk(mp4PlanDir, chunkIndex, outA);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (HOST_CHROME_FAILURE_PATTERNS.test(message)) {
+            console.warn(
+              `[crossWorkerIdempotency.test] skipping mp4 chunk ${chunkIndex} — host Chrome can't render. `,
+              "Diagnostic:",
+              message.slice(0, 240),
+            );
+            return;
+          }
+          throw err;
+        }
+        b = await renderChunk(mp4PlanDir, chunkIndex, outB);
 
-      expect(a.outputKind).toBe("file");
-      expect(b.outputKind).toBe("file");
-      expect(a.framesEncoded).toBeGreaterThan(0);
-      expect(b.framesEncoded).toBe(a.framesEncoded);
+        expect(a.outputKind).toBe("file");
+        expect(b.outputKind).toBe("file");
+        expect(a.framesEncoded).toBeGreaterThan(0);
+        expect(b.framesEncoded).toBe(a.framesEncoded);
 
-      expect(a.sha256).toBe(b.sha256);
-      assertBytesEqual(outA, outB, "file", "mp4 chunk 0");
-    },
-    TIMEOUT_MS,
-  );
+        expect(a.sha256).toBe(b.sha256);
+        assertBytesEqual(outA, outB, "file", `mp4 chunk ${chunkIndex}`);
+      },
+      TIMEOUT_MS,
+    );
+  }
 });
