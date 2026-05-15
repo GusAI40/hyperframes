@@ -161,16 +161,16 @@ body {
   opacity: 0;
   pointer-events: none;
   z-index: 200;
-  transition: opacity 0.35s ease;
+  transition: opacity 0.5s ease;
 }
 .transition-overlay.active { opacity: 1; pointer-events: all; }
 .card.selected-exit {
   position: relative;
   z-index: 201;
-  transition: transform 0.4s cubic-bezier(0.16,1,0.3,1), opacity 0.3s ease 0.15s;
-  transform: scale(1.05);
+  transition: transform 0.8s cubic-bezier(0.16,1,0.3,1), opacity 0.4s ease 0.5s;
+  transform: scale(2.5);
 }
-.card.selected-exit.fade { opacity: 0; transform: scale(1.1); }
+.card.selected-exit.fade { opacity: 0; transform: scale(3.5); }
 .loading-msg {
   position: fixed;
   bottom: 20px;
@@ -586,7 +586,7 @@ function selectTemplate(slug) {
   if (card) card.classList.add("selected-exit");
   setTimeout(function() {
     if (card) card.classList.add("fade");
-  }, 200);
+  }, 400);
 
   setTimeout(function() {
     if (window.parent !== window) {
@@ -595,7 +595,7 @@ function selectTemplate(slug) {
     sessionStorage.setItem("templatePick", JSON.stringify(msg));
       window.location = "pick-design.html";
     }
-  }, 450);
+  }, 900);
 }
 
 buildPalChips();
