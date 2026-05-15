@@ -346,8 +346,41 @@
       /* Scene grid */
       .scene-grid {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: 1fr;
         gap: 6px;
+      }
+      .specimen-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .specimen-cell {
+        position: relative;
+        overflow: hidden;
+        border-radius: 4px;
+        aspect-ratio: 16/9;
+        border: 1px solid rgba(128,128,128,0.1);
+        background: #111;
+      }
+      .specimen-cell iframe {
+        width: 1920px;
+        height: 1080px;
+        border: none;
+        transform-origin: top left;
+        pointer-events: none;
+      }
+      .specimen-label {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 4px 8px;
+        font-size: 9px;
+        color: rgba(255,255,255,0.5);
+        background: linear-gradient(transparent, rgba(0,0,0,0.5));
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
       }
       .scene-cell {
         position: relative;
@@ -1093,50 +1126,42 @@
         <div class="showcase" id="showcase" style="display:none;">
 
           <div class="showcase-section" id="sc-overview">
-            <div class="showcase-eyebrow">/ 01 / Overview</div>
             <h2 class="showcase-heading" id="sc-overview-title"></h2>
             <p class="showcase-lead" id="sc-overview-lead"></p>
           </div>
 
+          <!-- Template hero: first slide, large -->
           <div class="showcase-section" id="sc-scenes">
-            <div class="showcase-eyebrow">/ 02 / Composition</div>
-            <h2 class="showcase-heading">Scene Frames</h2>
-            <p class="showcase-lead">Four key moments — hook, proof, action, close.</p>
             <div class="scene-grid" id="sc-scene-grid"></div>
           </div>
 
+          <!-- Slide specimens: remaining slides from the template, rendered small -->
+          <div class="showcase-section" id="sc-specimens">
+            <div class="showcase-eyebrow">/ Slides</div>
+            <div class="specimen-grid" id="sc-specimen-grid"></div>
+          </div>
+
+          <!-- Palette swatches -->
           <div class="showcase-section" id="sc-palette">
-            <div class="showcase-eyebrow">/ 03 / Palette</div>
-            <h2 class="showcase-heading">Color Palette</h2>
-            <p class="showcase-lead" id="sc-palette-lead"></p>
+            <div class="showcase-eyebrow">/ Palette</div>
             <div class="swatch-grid" id="sc-swatches"></div>
           </div>
 
+          <!-- Type specimens -->
           <div class="showcase-section" id="sc-type">
-            <div class="showcase-eyebrow">/ 04 / Typography</div>
-            <h2 class="showcase-heading">Typography Scale</h2>
-            <p class="showcase-lead" id="sc-type-lead"></p>
+            <div class="showcase-eyebrow">/ Typography</div>
             <div id="sc-type-specimens"></div>
           </div>
 
-          <div class="showcase-section" id="sc-radius">
-            <div class="showcase-eyebrow">/ 05 / Corners</div>
-            <h2 class="showcase-heading">Border Radius</h2>
-            <div class="radius-grid" id="sc-radius-grid"></div>
-          </div>
-
-          <div class="showcase-section" id="sc-elevation">
-            <div class="showcase-eyebrow">/ 06 / Depth</div>
-            <h2 class="showcase-heading">Elevation</h2>
-            <p class="showcase-lead" id="sc-elevation-lead"></p>
-            <div class="elevation-grid" id="sc-elevation-grid"></div>
-          </div>
-
-          <div class="showcase-section" id="sc-motion">
-            <div class="showcase-eyebrow">/ 07 / Motion</div>
-            <h2 class="showcase-heading">Motion Personality</h2>
-            <p class="showcase-lead" id="sc-motion-lead"></p>
+          <!-- Hidden containers for renderPreview compatibility -->
+          <div style="display:none;">
+            <p id="sc-palette-lead"></p>
+            <p id="sc-type-lead"></p>
+            <p id="sc-elevation-lead"></p>
+            <p id="sc-motion-lead"></p>
             <div id="sc-ease-preview"></div>
+            <div id="sc-radius-grid"></div>
+            <div id="sc-elevation-grid"></div>
           </div>
 
         </div>
@@ -2490,10 +2515,6 @@
               ifr.sandbox = "allow-same-origin";
               ifr.style.cssText = "width:1920px;height:1080px;border:none;transform-origin:top left;pointer-events:none;";
               wrap.appendChild(ifr);
-              var nav = document.createElement("div");
-              nav.style.cssText = "position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;background:rgba(0,0,0,0.75);padding:4px 14px;border-radius:20px;z-index:10;";
-              nav.innerHTML = '<button style="background:none;border:none;color:#999;font-size:16px;cursor:pointer;padding:2px 6px;" id="tp-prev">&#9664;</button><span style="font-size:11px;color:#888;min-width:40px;text-align:center;font-variant-numeric:tabular-nums;" id="tp-num">...</span><button style="background:none;border:none;color:#999;font-size:16px;cursor:pointer;padding:2px 6px;" id="tp-next">&#9654;</button>';
-              wrap.appendChild(nav);
               grid.appendChild(wrap);
               ifr.addEventListener("load", function() {
                 var doc = ifr.contentDocument;
@@ -2532,15 +2553,95 @@
                 }
                 var scale = wrap.offsetWidth / 1920;
                 ifr.style.transform = "scale(" + scale + ")";
-                document.getElementById("tp-num").textContent = "1 / " + tot;
-                function go(delta) {
-                  cur = (cur + delta + tot) % tot;
-                  if (scrollMode) { slides[cur].scrollIntoView({behavior:"instant",inline:"start",block:"start"}); }
-                  else { slides.forEach(function(s,i) { if (i===cur) { s.classList.add("active"); s.style.visibility="visible"; s.style.opacity="1"; } else { s.classList.remove("active"); s.style.visibility="hidden"; s.style.opacity="0"; } }); }
-                  document.getElementById("tp-num").textContent = (cur+1) + " / " + tot;
+
+                // Build specimen grid: load each remaining slide in its own small iframe
+                var specGrid = document.getElementById("sc-specimen-grid");
+                if (specGrid && tot > 1) {
+                  specGrid.innerHTML = "";
+                  for (var si = 1; si < Math.min(tot, 7); si++) {
+                    (function(slideIdx) {
+                      var cell = document.createElement("div");
+                      cell.className = "specimen-cell";
+                      var specIfr = document.createElement("iframe");
+                      specIfr.src = "../templates/" + pick.slug + "/template.html";
+                      specIfr.sandbox = "allow-same-origin";
+                      specIfr.style.cssText = "width:1920px;height:1080px;border:none;transform-origin:top left;pointer-events:none;";
+                      specIfr.loading = "lazy";
+                      cell.appendChild(specIfr);
+                      var label = document.createElement("div");
+                      label.className = "specimen-label";
+                      label.textContent = "Slide " + (slideIdx + 1);
+                      cell.appendChild(label);
+                      specGrid.appendChild(cell);
+
+                      specIfr.addEventListener("load", function() {
+                        var sDoc = specIfr.contentDocument;
+                        if (!sDoc) return;
+                        sDoc.querySelectorAll("script").forEach(function(s) { s.remove(); });
+                        sDoc.querySelectorAll("*").forEach(function(el) {
+                          try { if (specIfr.contentWindow.getComputedStyle(el).opacity === "0") el.style.opacity = "1"; } catch(e) {}
+                        });
+                        // Handle deck-stage
+                        var sDs = sDoc.querySelector("deck-stage");
+                        if (sDs) {
+                          var sStyle = sDoc.createElement("style");
+                          sStyle.textContent = "deck-stage{display:block;width:1920px;height:1080px;position:relative;overflow:hidden;}deck-stage>section{position:absolute;top:0;left:0;width:100%;height:100%;visibility:hidden;opacity:0;}deck-stage>section.active{visibility:visible;opacity:1;}";
+                          sDoc.head.appendChild(sStyle);
+                          var allSections = sDs.querySelectorAll("section");
+                          allSections.forEach(function(s,i) {
+                            s.classList.remove("active");
+                            if (i === slideIdx) { s.classList.add("active"); s.style.visibility = "visible"; s.style.opacity = "1"; }
+                          });
+                        } else {
+                          // Scroll-stacked or active-class templates
+                          var sSlides = sDoc.querySelectorAll("section.slide, div.slide, .slide, section[class]");
+                          if (sSlides.length > slideIdx) {
+                            var sTarget = sSlides[slideIdx];
+                            var sParent = sTarget.parentElement;
+                            if (sParent && specIfr.contentWindow.getComputedStyle(sSlides[0]).position !== "absolute") {
+                              sParent.style.height = "1080px";
+                              sParent.style.overflow = "hidden";
+                              sParent.style.transform = "translateY(-" + sTarget.offsetTop + "px)";
+                            } else {
+                              sSlides.forEach(function(s,i) {
+                                if (i === slideIdx) { s.classList.add("active"); s.style.visibility = "visible"; s.style.opacity = "1"; }
+                                else { s.classList.remove("active"); s.style.visibility = "hidden"; s.style.opacity = "0"; }
+                              });
+                            }
+                          }
+                        }
+                        sDoc.body.style.overflow = "hidden";
+                        sDoc.documentElement.style.overflow = "hidden";
+                        var sScale = cell.offsetWidth / 1920;
+                        specIfr.style.transform = "scale(" + sScale + ")";
+
+                        // Apply same text injection
+                        if (pick.promptText) {
+                          var pt2 = pick.promptText;
+                          var tone2 = pick.tone || "bold";
+                          var d2=[pt2.taglines&&pt2.taglines[tone2]||"",pt2.headline||""], h2=pt2.headlines||[], b2=pt2.body||[], st2=pt2.stats||[], sL2=pt2.statLabels||[], lb2=pt2.labels||[], sm2=pt2.smalls||[];
+                          var _di=0,_hi=0,_bi=0,_si=0,_sli=0,_li=0,_smi=0;
+                          sDoc.querySelectorAll("*").forEach(function(el) {
+                            if (el.children.length > 0) return;
+                            var txt = el.textContent.trim();
+                            if (!txt) return;
+                            try { var ecs = specIfr.contentWindow.getComputedStyle(el); } catch(e) { return; }
+                            if (ecs.display==="none"||ecs.visibility==="hidden") return;
+                            var efs = parseFloat(ecs.fontSize);
+                            if (efs>=60&&d2.length) { el.textContent=d2[_di%d2.length]; _di++; }
+                            else if (efs>=32&&h2.length) { el.textContent=h2[_hi%h2.length]; _hi++; }
+                            else if (efs>=18&&txt.length>20&&b2.length) { el.textContent=b2[_bi%b2.length]; _bi++; }
+                            else if (efs>=18&&sm2.length) { el.textContent=sm2[_smi%sm2.length]; _smi++; }
+                            else if (/^\d/.test(txt)&&txt.length<10&&st2.length) { el.textContent=st2[_si%st2.length]; _si++; }
+                            else if (efs<14&&txt===txt.toUpperCase()&&lb2.length) { el.textContent=lb2[_li%lb2.length]; _li++; }
+                            else if (txt.length>20&&b2.length) { el.textContent=b2[_bi%b2.length]; _bi++; }
+                            else if (sm2.length) { el.textContent=sm2[_smi%sm2.length]; _smi++; }
+                          });
+                        }
+                      });
+                    })(si);
+                  }
                 }
-                document.getElementById("tp-prev").onclick = function() { go(-1); };
-                document.getElementById("tp-next").onclick = function() { go(1); };
 
                 // Inject contextual text
                 if (pick.promptText) {
