@@ -74,6 +74,21 @@ export async function captureScrollScreenshots(page: Page, outputDir: string): P
     // Reset scroll
     await page.evaluate(`window.scrollTo(0, 0)`);
     await new Promise((r) => setTimeout(r, 200));
+
+    // Full-page screenshot — single tall image of the entire page.
+    // Useful for scrolling website animation videos where the whole page
+    // pans vertically as one continuous surface.
+    try {
+      const fullPagePath = join(screenshotsDir, "full-page.png");
+      const fullPageBuffer = await page.screenshot({
+        type: "png",
+        fullPage: true,
+      });
+      writeFileSync(fullPagePath, fullPageBuffer);
+      filePaths.push("screenshots/full-page.png");
+    } catch {
+      /* full-page screenshot can fail on very tall pages — non-critical */
+    }
   } catch {
     /* scroll screenshots are non-critical */
   }

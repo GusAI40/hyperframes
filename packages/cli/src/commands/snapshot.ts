@@ -442,6 +442,23 @@ export default defineCommand({
       for (const p of paths) {
         console.log(`   ${p}`);
       }
+
+      // Generate contact sheet for quick AI review
+      try {
+        const { createSnapshotContactSheet } = await import("../capture/contactSheet.js");
+        const snapshotDir = join(project.dir, "snapshots");
+        const sheets = await createSnapshotContactSheet(
+          snapshotDir,
+          join(snapshotDir, "contact-sheet.jpg"),
+        );
+        if (sheets.length > 0) {
+          const label =
+            sheets.length === 1 ? "contact-sheet.jpg" : `contact-sheet-1..${sheets.length}.jpg`;
+          console.log(`   ${c.dim(label)} (grid view for AI review)`);
+        }
+      } catch {
+        /* non-critical */
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`\n${c.error("✗")} Snapshot failed: ${msg}`);
