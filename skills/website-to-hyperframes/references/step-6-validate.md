@@ -42,35 +42,38 @@ npx tsx packages/cli/src/cli.ts snapshot <project-dir> --frames <N> \
 
 Output lands in `<project-dir>/snapshots/`. Gemini writes `snapshots/descriptions.md` automatically.
 
-**Read `descriptions.md` before viewing the contact sheet.** It gives you an objective written description of every frame — what Gemini sees in each one. A description saying "black screen" or "loading overlay visible" for a content beat is a bug to fix. Compare every line against your storyboard spec before declaring the video done.
+**Two required reads — both, not one:**
 
-**Start with the contact sheet.** The snapshot command generates `snapshots/contact-sheet.jpg` (and `contact-sheet-2.jpg` etc. if you took many frames). View that first — it gives you the full picture of the video in one grid so you can spot obvious problems immediately (black frames, missing content, layout breaks). Then drill into individual frames for the beats that need closer inspection.
+1. **Read `snapshots/descriptions.md`** — Gemini's objective written analysis of every frame. Any description mentioning "black frame", "blank screen", or "loading overlay" for a content beat is a bug. Compare each line against the storyboard beat spec for that timestamp.
 
-**View every snapshot image carefully.** Don't glance and move on. For each frame, check:
+2. **View `snapshots/contact-sheet.jpg`** — the full grid view. The descriptions tell you what to look for; the contact sheet lets you see it.
 
-**Against the storyboard (STORYBOARD.md):**
+Fix every issue you find before continuing — re-snapshot after fixing to confirm the fix.
 
-- Does this frame match the beat description? Open the storyboard, find the beat for this timestamp, and compare. The storyboard said "MacBook mockup with dashboard on screen, aurora gradient background" — is that what you see?
-- Are the specified assets actually visible? If the storyboard assigned `capture/screenshots/scroll-000.png` to this beat, is it showing?
-- Does the animation sequence match? If the storyboard says "cards fly in from the right with back.out(1.4)" — at the right timestamp, are they mid-flight from the right?
+## Critic Sub-Agent (required before preview)
 
-**Against the creative direction (Step 2):**
+After reviewing descriptions and contact sheet, spawn a sub-agent with this exact prompt:
 
-- Does the overall feel match what the user asked for? If they said "cinematic, dark, premium" — does this look cinematic, dark, and premium? Or does it look generic? Be absolutely honest and real!!
-- Are the brand colors from DESIGN.md actually being used? Check hex values against what's rendered. Again, no lies, be honest and real!
+```
+You are a senior motion designer and creative director reviewing a brand video before it ships to a client. You've seen hundreds of these. You have high standards.
 
-**Technical quality:**
+Read these files:
+- STORYBOARD.md (what was planned)
+- DESIGN.md (brand rules)
+- snapshots/descriptions.md (what Gemini sees in each frame)
+- snapshots/contact-sheet.jpg (view it)
 
-- Is there visible content? All-white or all-black frames mean compositions aren't rendering.
-- Can you read ALL text? White text on white/light background is invisible. Every text element needs contrast against what's directly behind it.
-- Are images and assets showing? Empty space where an image should be means a path issue or missing file.
-- Do background images fill the intended area? Check against the storyboard — if it said full-bleed, it should be full-bleed.
-- Does the frame density match the storyboard spec? A beat planned as sparse should have open space — "too empty" is only wrong if the storyboard called for rich. Check the spec, not your instinct.
-- Are elements overlapping incorrectly? Text over text, or content bleeding off edges?
+Then give honest, specific, constructive feedback:
+1. What's working well? (be specific — name the beat and what's strong about it)
+2. What's not working? (name exact beats, describe the specific problem)
+3. What's the single biggest quality gap between what was planned and what was built?
+4. Brand accuracy: does this video feel like it was made FOR THIS BRAND, or could it be for any brand?
+5. What would you fix if you had 15 more minutes?
 
-**Fix issues as you find them.** Go back to that composition, fix the problem, re-snapshot at that timestamp, verify. Accumulating issues to fix later means they compound — a timing bug in beat 2 breaks beat 3. Fix one, re-verify, move on.
+Be honest. Don't soften real problems. Don't be harsh for the sake of it. Think like someone who wants this video to be genuinely good, not just technically complete.
+```
 
-**Take your time reviewing.** A 30-second video has ~900 frames at 30fps — even 15 snapshots sample less than 2% of them. If something looks off in one snapshot, it's probably off for dozens of surrounding frames too. Worth checking a couple more around that timestamp.
+Read the critic's assessment carefully. Fix the issues they flag before showing the user anything.
 
 ## Preview (always do this)
 

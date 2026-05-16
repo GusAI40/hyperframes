@@ -17,6 +17,30 @@ if (rootVersionRequested) {
   process.exit(0);
 }
 
+// ── Load .env from CWD ─────────────────────────────────────────────────────
+// Agents run from the project directory where .env holds API keys (Gemini,
+// HeyGen, ElevenLabs). Load it automatically so they don't need `source .env`.
+try {
+  const { readFileSync } = await import("node:fs");
+  const { resolve } = await import("node:path");
+  const envPath = resolve(process.cwd(), ".env");
+  const envContent = readFileSync(envPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx < 1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed
+      .slice(eqIdx + 1)
+      .trim()
+      .replace(/^["']|["']$/g, "");
+    if (key && !(key in process.env)) process.env[key] = val;
+  }
+} catch {
+  /* .env not present — fine, env vars may be set another way */
+}
+
 // ── Lazy imports ────────────────────────────────────────────────────────────
 // Telemetry, update checks, and heavy modules are imported only when needed.
 // For --help we skip telemetry entirely.

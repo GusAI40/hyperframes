@@ -29,6 +29,67 @@ export async function captureScrollScreenshots(page: Page, outputDir: string): P
   const filePaths: string[] = [];
 
   try {
+    // Dismiss marketing banners, cookie consents, and popups before scrolling.
+    // These overlay content and contaminate screenshots with UI that doesn't
+    // belong in video compositions (cookie popups, newsletter modals, etc.)
+    await page
+      .evaluate(() => {
+        // Click common dismiss/accept buttons
+        const selectors = [
+          // Cookie consent
+          '[id*="cookie"] button[class*="accept"]',
+          '[id*="cookie"] button[class*="agree"]',
+          '[id*="cookie"] button[class*="allow"]',
+          '[class*="cookie"] button[class*="accept"]',
+          '[class*="consent"] button',
+          // Generic close buttons on overlays/modals
+          '[class*="banner"] [class*="close"]',
+          '[class*="banner"] [class*="dismiss"]',
+          '[class*="popup"] [class*="close"]',
+          '[class*="modal"] [class*="close"]',
+          '[class*="overlay"] [class*="close"]',
+          // Common GDPR patterns
+          'button[id*="accept"]',
+          'button[id*="agree"]',
+          'button[class*="accept-all"]',
+          'button[class*="acceptAll"]',
+          // Notification prompts
+          'button[class*="decline"]',
+          'button[class*="not-now"]',
+          'button[class*="no-thanks"]',
+        ];
+        for (const sel of selectors) {
+          try {
+            const el = document.querySelector<HTMLElement>(sel);
+            if (el) el.click();
+          } catch {
+            /* ignore */
+          }
+        }
+        // Hide fixed/sticky overlays that aren't the main nav
+        const fixed = document.querySelectorAll<HTMLElement>("*");
+        for (const el of fixed) {
+          const style = window.getComputedStyle(el);
+          if (
+            (style.position === "fixed" || style.position === "sticky") &&
+            style.zIndex !== "auto" &&
+            parseInt(style.zIndex) > 100 &&
+            el.tagName !== "HEADER" &&
+            el.tagName !== "NAV" &&
+            !el.closest("header") &&
+            !el.closest("nav")
+          ) {
+            const rect = el.getBoundingClientRect();
+            // Only hide overlays that cover a significant portion of the viewport
+            if (rect.height > 80 && rect.width > window.innerWidth * 0.3) {
+              el.style.display = "none";
+            }
+          }
+        }
+      })
+      .catch(() => {});
+    await new Promise((r) => setTimeout(r, 400));
+
     const scrollHeight = (await page.evaluate(
       `Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)`,
     )) as number;

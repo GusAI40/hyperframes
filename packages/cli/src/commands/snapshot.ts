@@ -419,9 +419,7 @@ async function captureSnapshots(
           }
         }
 
-        const timeLabel = opts.at?.length
-          ? `${time.toFixed(1)}s`
-          : `${Math.round((time / duration) * 100)}pct`;
+        const timeLabel = `${time.toFixed(1)}s`;
         const filename = `frame-${String(i).padStart(2, "0")}-at-${timeLabel}.png`;
         const framePath = join(snapshotDir, filename);
 
