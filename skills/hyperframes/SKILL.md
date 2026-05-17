@@ -43,7 +43,8 @@ If no design file exists, offer the user a choice:
 
 1. **User named a style or mood?** → Read [visual-styles.md](./visual-styles.md) for the 8 named presets. Pick the closest match.
 2. **Want to browse options visually?** → Run the design picker: read [references/design-picker.md](references/design-picker.md) for the full workflow. This serves a visual picker page. The user configures mood, palette, typography, and motion in the browser, then exports a DESIGN.html.
-3. **Want to skip and go fast?** → Ask: mood, light or dark, any brand colors/fonts? Then pick a palette from [house-style.md](./house-style.md).
+
+**Converting design.md → DESIGN.html:** If you have a `design.md` and need to produce a `DESIGN.html` showcase, read [references/design-showcase.md](references/design-showcase.md). It covers the full process: extracting palette/type/motion from the spec, placing the system on character axes, building the showcase page section by section, and the agent contract (token IDs, template CSS, slide skeletons). 3. **Want to skip and go fast?** → Ask: mood, light or dark, any brand colors/fonts? Then pick a palette from [house-style.md](./house-style.md).
 
 **The design file defines the brand. It does not define video composition rules.** Those come from [references/video-composition.md](references/video-composition.md) and [house-style.md](./house-style.md). Use brand colors at video-appropriate scale — not at web-UI opacity.
 
