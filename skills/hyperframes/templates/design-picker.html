@@ -2260,7 +2260,7 @@
       var _iframeDebounce = null;
       function debouncedIframeUpdate() {
         clearTimeout(_iframeDebounce);
-        _iframeDebounce = setTimeout(function() { if (window._currentTemplateSlug) renderDesignIframe(); }, 300);
+        _iframeDebounce = setTimeout(function() { if (window._currentTemplateSlug) renderDesignIframe(); }, 500);
       }
 
       function makeSlider(parent, label, key, min, max, step, preset) {
@@ -2647,8 +2647,11 @@
         h = h.replace(/__DATE__/g, new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }));
 
         // Write to iframe
-        var doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open(); doc.write(h); doc.close();
+        // Use blob URL for smooth transition — old content stays until new is ready
+        if (iframe._blobUrl) URL.revokeObjectURL(iframe._blobUrl);
+        var blob = new Blob([h], { type: 'text/html' });
+        iframe._blobUrl = URL.createObjectURL(blob);
+        iframe.src = iframe._blobUrl;
         iframe.style.display = "";
       }
 
