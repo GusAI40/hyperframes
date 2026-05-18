@@ -2786,6 +2786,7 @@
           '.palette .swatch:nth-child(2){background:' + p.secondary + '!important}' +
           '.palette .swatch:nth-child(3){background:' + (p.tertiary||"#888") + '!important}' +
           '.palette .swatch:nth-child(4){background:' + p.accent + '!important}' +
+          (bg && bg.type ? 'html,body{background:transparent!important}.cover{background:transparent!important}#bg-veil{opacity:.4!important}' : '') +
           '</style>';
         h = h.replace('</head>', overrideCSS + '</head>');
 
