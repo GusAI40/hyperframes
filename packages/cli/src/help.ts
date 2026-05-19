@@ -23,6 +23,7 @@ const GROUPS: Group[] = [
       ["add", "Install a block or component from the registry"],
       ["capture", "Capture a website for video production"],
       ["catalog", "Browse and install blocks and components"],
+      ["pick", "Open the design picker in your browser to create a design.md"],
       ["preview", "Start the studio for previewing compositions"],
       ["publish", "Upload a project and get a stable public URL"],
       ["render", "Render a composition to MP4 or WebM"],

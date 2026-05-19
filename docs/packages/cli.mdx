@@ -436,6 +436,25 @@ This is suppressed in CI environments, non-TTY shells, and when `HYPERFRAMES_NO_
 
   </Tab>
   <Tab title="Preview">
+    ### `pick`
+
+    Open the design picker in your browser to choose a template and create a `design.md`:
+
+    ```bash
+    npx hyperframes pick
+    npx hyperframes pick --port 8723
+    npx hyperframes pick --build-only
+    ```
+
+    | Flag | Description |
+    |------|-------------|
+    | `--port` | Port to serve the picker on (default: 8723) |
+    | `--build-only` | Build the picker HTML without serving it |
+
+    Builds `.hyperframes/pick-design.html` from the installed skill template, starts a local HTTP server, and opens the picker. Requires the HyperFrames skills (`npx hyperframes skills`) and `python3` installed.
+
+    The picker walks you through palette, typography, corners, density, depth, motion, and an optional shader background. Export the resulting `design.md` and paste it into your project root.
+
     ### `preview`
 
     Start a live preview server with hot reload:
