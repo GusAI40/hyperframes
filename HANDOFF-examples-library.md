@@ -1,17 +1,17 @@
 # HANDOFF — Examples Library (Sessions May 19, 2026)
 
-> **READ THIS BEFORE PICKING UP THE EXAMPLES LIBRARY WORK.** This is the followup to `HANDOFF.md` (which covers the v2-v9 pipeline-quality work through May 18). This doc covers what was built May 19: the HyperFrames Capability Showcase example library, **65 scenes across 13 sections**, all rendered and uploaded, gallery app live, **skill wiring updated to 3-mode framework** (copy+mutate / recombine / fresh), a second-pass survey of every production project that turned up 5 high-leverage gap-filler scenes (batch 10), and 3 hand-authored scenes filling the thinnest sections (batch 11).
+> **READ THIS BEFORE PICKING UP THE EXAMPLES LIBRARY WORK.** This is the followup to `HANDOFF.md` (which covers the v2-v9 pipeline-quality work through May 18). This doc covers what was built May 19: the HyperFrames Capability Showcase example library, **68 scenes across 13 sections**, all rendered and uploaded, gallery app live, **skill wiring updated to 3-mode framework** (copy+mutate / recombine / fresh), a second-pass survey of every production project that turned up 5 high-leverage gap-filler scenes (batch 10), 3 hand-authored gap-fillers (batch 11), and 3 more hand-authored gap-fillers (batch 12 — 05-02 ripple shader, 06-02 3D flip transition, 10-04 audio-viz hero).
 
 ---
 
 ## TL;DR
 
-**What got built:** **65 production-grade example scenes** at `skills/website-to-hyperframes/examples/`, covering every HyperFrames technique. Each scene is standalone-renderable, lint-clean, snapshot-verified, composed 100% from HTML/CSS/SVG/GSAP/Canvas — zero captured screenshots. Plus a single concatenated "Grand Tour" reel (**7:31 MP4**) that plays all 65 back-to-back.
+**What got built:** **68 production-grade example scenes** at `skills/website-to-hyperframes/examples/`, covering every HyperFrames technique. Each scene is standalone-renderable, lint-clean, snapshot-verified, composed 100% from HTML/CSS/SVG/GSAP/Canvas — zero captured screenshots. Plus a single concatenated "Grand Tour" reel (**7:50 MP4**) that plays all 68 back-to-back.
 
 **Why:** `HANDOFF.md` Recommendation 1 said skill prose was exhausted as a lever (11 eval branches all produced slideshow videos regardless of prose changes). Recommendation 2 said: **show, don't tell** — build production-grade reference examples agents can use. This library is that.
 
 **Gallery is live:** https://www.heygenverse.com/a/1636f2fe-3ddc-4543-9a56-0d0b99538807
-**Grand Tour reel (all 65 scenes, 7:31):** https://www.heygenverse.com/s/efb24629-1c60-41f9-bd3f-a78d2181d774/raw
+**Grand Tour reel (all 68 scenes, 7:50):** https://www.heygenverse.com/s/bbe43a50-4eda-4fd9-b248-38c5ae73e64d/raw
 
 **Skill wiring is active AND updated** (May 19 evening): the skill now explicitly names **three legitimate modes** for using examples — `copy+mutate` (1:1 fit), `recombine` (2-3 scenes layered), `fresh` (author from scratch with examples as taste reference). Examples are NEVER finished beats — non-negotiable customization rule applies in every mode. See **[Skill Wiring](#skill-wiring)** below for the patch summary.
 
@@ -20,9 +20,17 @@
 - **step-5-build.md**: mode-aware build process; explicit "fresh ≠ paste, recombine ≠ frankenstein".
 - **beat-builder-guide.md**: 3-mode table is the FIRST mandatory read; "non-negotiable in every mode: customize."
 
-**Branch:** `feat/pipeline-quality-v2` (continued from prior session). **18 commits** total this session.
+**Branch:** `feat/pipeline-quality-v2` (continued from prior session). **19 commits** total this session.
 
-**Library is internally consistent.** Every scene appears in (a) its section README, (b) the master lookup table in `examples/README.md`, (c) the rendered MP4 list, and (d) the Verse asset ID table below. The technique-pick checklist in step-3 has reliable coverage — an agent can find any of the 65 scenes from the lookup table without grepping the directory.
+**Library is internally consistent.** Every scene appears in (a) its section README, (b) the master lookup table in `examples/README.md`, (c) the rendered MP4 list, and (d) the Verse asset ID table below. The technique-pick checklist in step-3 has reliable coverage — an agent can find any of the 68 scenes from the lookup table without grepping the directory.
+
+### What batch 12 added (3 more hand-authored scenes)
+
+After batch 11, sections 05, 06, 10 were still showing 1, 1, 3 scenes respectively. Authored 3 more from scratch:
+
+- **05-02 Ripple Shader Transition**: dedicated single-shader A→B transition. UNDER (cool blue underwater feel) → OVER (warm amber sunset). Canvas 2D draws 8 concentric expanding rings with R/G/B-channel offsets to simulate chromatic aberration; a central white-flash radial gradient peaks at midpoint; the two scenes crossfade at peak distortion. Demonstrates `gsap.ticker.add()` reading `tl.time()` (mandatory for seekable canvas) + the bell-curve intensity pattern (`sin(u * π)`) that gives shader transitions their characteristic peak-then-fade arc.
+- **06-02 3D Flip Transition**: dedicated full-frame CSS 3D card flip. Blue card "12 teams shipping" (counter ticks 0→12) → anticipation tilt → rotateY 180° flip → orange card "847 videos rendered" (counter ticks 0→847). Caption swaps mid-flip. `transform-style: preserve-3d` + `perspective: 2400px` + `backface-visibility: hidden`. The canonical full-frame CSS 3D flip — different from the mini-cell version in scene-01.
+- **10-04 Audio-Viz Hero**: audio-reactive aesthetic without real audio input. 32-tick beat grid + 40-bar amber spectrum + 4 corner telemetry readouts (ACCENT/TRIGGER/INSERT/PEAK) + "*Beat* drop." hero. 7 scheduled "beat" timestamps at 2.5/3.0/3.5/4.0/4.5/5.0/5.5s; each pulses a group of bars + brightens a tick + breathes the hero + ticks the peak counter. Pre-rendered deterministic bar heights (no `Math.random`). Fills the audio-reactive gap in section 10.
 
 ### What batch 11 added (3 hand-authored scenes filling the thinnest sections)
 
@@ -92,12 +100,12 @@ skills/website-to-hyperframes/examples/
 ├── 02-markers-and-emphasis/    README.md + 6 scene dirs
 ├── 03-easing-variety/          README.md + 2 scene dirs
 ├── 04-composed-ui/             README.md + 13 scene dirs
-├── 05-transitions-shader/      README.md + 1 scene dir
-├── 06-transitions-css/         README.md + 1 scene dir
+├── 05-transitions-shader/      README.md + 2 scene dirs
+├── 06-transitions-css/         README.md + 2 scene dirs
 ├── 07-html-in-canvas/          README.md + 5 scene dirs
 ├── 08-svg-and-path/            README.md + 3 scene dirs
 ├── 09-counters-and-data/       README.md + 3 scene dirs
-├── 10-particles-and-ambient/   README.md + 3 scene dirs
+├── 10-particles-and-ambient/   README.md + 4 scene dirs
 ├── 11-3d-and-parallax/         README.md + 5 scene dirs
 ├── 12-combined-vignettes/      README.md + 6 scene dirs
 └── 13-anti-patterns/           README.md + 4 scene dirs
@@ -118,7 +126,7 @@ skills/website-to-hyperframes/examples/
 
 ---
 
-## THE 65 SCENES — FULL INVENTORY
+## THE 68 SCENES — FULL INVENTORY
 
 ### Section 01 — Typography (11 scenes)
 
@@ -174,17 +182,19 @@ skills/website-to-hyperframes/examples/
 | `scene-12-claude-code-ide` | 8s | Claude Code AI agent chat panel — chrome dots + prompt type-on + tool-call badges + DESIGN.md output |
 | `scene-13-design-inspector` | 9s | Figma-style design inspector — HEADLINE on left, panel with cycling Color/Font/Size values, stacked-absolute-span swap pattern (fully seekable) |
 
-### Section 05 — Transitions Shader (1 scene)
+### Section 05 — Transitions Shader (2 scenes)
 
 | Scene | Duration | Technique |
 |-------|----------|-----------|
 | `scene-01-shader-transitions-showcase` | 6s | 4-panel: chromatic-split, sdf-iris, domain-warp, whip-pan |
+| `scene-02-ripple-shader-transition` | 6s | UNDER → OVER ripple shader with concentric rings + RGB chromatic aberration + central flash at peak |
 
-### Section 06 — Transitions CSS (1 scene)
+### Section 06 — Transitions CSS (2 scenes)
 
 | Scene | Duration | Technique |
 |-------|----------|-----------|
 | `scene-01-css-transitions-grid` | 5s | 2×3 grid: push, scale, blur-dissolve, 3D flip, light-leak, dissolve |
+| `scene-02-3d-flip-transition` | 6s | Full-frame CSS 3D card flip — blue "12 teams" card → 180° rotateY → orange "847 videos" card with counters |
 
 ### Section 07 — HTML in Canvas (5 scenes)
 
@@ -212,13 +222,14 @@ skills/website-to-hyperframes/examples/
 | `scene-02-pipeline-diagram` | 10.7s | Vertical scroll-pan through Agent→Renderer→MP4 + SVG connectors |
 | `scene-03-counter-million-showcase` | 6s | Canonical 0 → 1,000,000 counter — 33 deterministic `tl.set()` calls with comma formatting |
 
-### Section 10 — Particles and Ambient (3 scenes)
+### Section 10 — Particles and Ambient (4 scenes)
 
 | Scene | Duration | Technique |
 |-------|----------|-----------|
 | `scene-01-radial-bloom-grid` | 3s | 15×25 dot grid, GSAP stagger.from="center" |
 | `scene-02-aurora-end-card` | 8s | Radial gradient + 12 particles + tri-color wordmark + install command type-on |
 | `scene-03-scan-line-grid` | 5.6s | CRT-adjacent: 3 sweep passes + grid overlay + telemetry HUD |
+| `scene-04-audio-viz-hero` | 7s | Audio-reactive aesthetic — 32-tick beat grid + 40-bar amber spectrum + 4 corner telemetry + "Beat drop." hero with 7 scheduled beat-pulse moments |
 
 ### Section 11 — 3D and Parallax (5 scenes)
 
@@ -349,11 +360,13 @@ All 53 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow
 | Scene | Asset ID |
 |---|---|
 | scene-01-shader-transitions-showcase | 301fd2f1-3056-4d72-ae4a-05010ca12a2b |
+| scene-02-ripple-shader-transition | f1679641-b3df-4143-ab56-4e20cfbff638 |
 
 ### Section 06 — Transitions CSS
 | Scene | Asset ID |
 |---|---|
 | scene-01-css-transitions-grid | 65e40abe-3898-4470-a109-55887a06ae60 |
+| scene-02-3d-flip-transition | a5a51a22-d6b4-46c0-80df-3ab73a93c7fd |
 
 ### Section 07 — HTML in Canvas
 | Scene | Asset ID |
@@ -384,6 +397,7 @@ All 53 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow
 | scene-01-radial-bloom-grid | 59f92099-f096-45bc-8c31-2402953faf07 |
 | scene-02-aurora-end-card | add9f284-3d4e-4b8c-b82f-c9283cc6bf23 |
 | scene-03-scan-line-grid | 54740f7f-4c50-4af5-b379-4b741de8cfd3 |
+| scene-04-audio-viz-hero | 6f105968-7dd8-41b3-8ef5-80801aaa3420 |
 
 ### Section 11 — 3D and Parallax
 | Scene | Asset ID |
@@ -413,7 +427,8 @@ All 53 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow
 ### Grand Tour Reel
 | Reel | Asset ID | Duration |
 |---|---|---|
-| grand-tour-65-scenes (current) | efb24629-1c60-41f9-bd3f-a78d2181d774 | 7:31 |
+| grand-tour-68-scenes (current) | bbe43a50-4eda-4fd9-b248-38c5ae73e64d | 7:50 |
+| grand-tour-65-scenes (superseded) | efb24629-1c60-41f9-bd3f-a78d2181d774 | 7:31 |
 | grand-tour-62-scenes (superseded) | 67bb4ee5-1c7f-4837-b144-d2527b8ade83 | 7:10 |
 | grand-tour-57-scenes (superseded) | b9cdfa1b-6fbd-45a1-b71f-7183edc9bd61 | 6:26 |
 | grand-tour-53-scenes (superseded) | bd3a5ac8-8b80-4dc8-af1b-20606a50456e | 5:58 |
@@ -613,10 +628,11 @@ batch_upload_assets supports up to 20 files at once. PUTs can run in parallel vi
 
 ---
 
-## THE 18 COMMITS
+## THE 19 COMMITS
 
 ```
-[pending]  feat(skill): examples library batch 11 — 3 hand-authored gap-fillers (65 scenes total)
+[pending]  feat(skill): examples library batch 12 — 3 hand-authored gap-fillers (68 scenes total)
+04b46a13  feat(skill): examples library batch 11 — 3 hand-authored gap-fillers (65 scenes)
 39069a19  feat(skill): examples library batch 10 — 5 second-pass lifts (62 scenes total)
 2bdba5e9  docs: finalize handoff — batches 7-9 (57 scenes, 3-mode wiring, READMEs synced)
 6bbfafe0  docs(skill): sync remaining section READMEs (01, 02, 04, 10, 11) — 9 missing scenes
@@ -636,7 +652,7 @@ a877da70  feat(skill): examples library section 04 — composed UI, 8 scenes
 04827b98  feat(skill): examples library scaffold + section 01 (typography) — 10 scenes
 ```
 
-All on branch `feat/pipeline-quality-v2`, ahead of `origin/feat/pipeline-quality-v2` by 18 commits.
+All on branch `feat/pipeline-quality-v2`, ahead of `origin/feat/pipeline-quality-v2` by 19 commits.
 
 ### What batches 8 + 9 did (docs sync after batch 7)
 
