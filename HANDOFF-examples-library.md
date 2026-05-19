@@ -6,15 +6,16 @@
 
 ## TL;DR
 
-**What got built:** 49 production-grade example scenes at `skills/website-to-hyperframes/examples/`, covering every HyperFrames technique. Each scene is standalone-renderable, lint-clean, snapshot-verified, composed 100% from HTML/CSS/SVG/GSAP/Canvas — zero captured screenshots.
+**What got built:** 53 production-grade example scenes at `skills/website-to-hyperframes/examples/`, covering every HyperFrames technique. Each scene is standalone-renderable, lint-clean, snapshot-verified, composed 100% from HTML/CSS/SVG/GSAP/Canvas — zero captured screenshots. Plus a single concatenated "Grand Tour" reel (5:58 MP4) that plays all 53 back-to-back.
 
 **Why:** `HANDOFF.md` Recommendation 1 said skill prose was exhausted as a lever (11 eval branches all produced slideshow videos regardless of prose changes). Recommendation 2 said: **show, don't tell** — build production-grade reference examples agents can copy from. This library is that.
 
 **Gallery is live:** https://www.heygenverse.com/a/1636f2fe-3ddc-4543-9a56-0d0b99538807
+**Grand Tour reel (all 53 scenes, 5:58):** https://www.heygenverse.com/s/bd3a5ac8-8b80-4dc8-af1b-20606a50456e/raw
 
 **Skill wiring is active:** SKILL.md Step -1 forces agents to read `examples/README.md` + 3 scenes before planning. step-3 requires beats to cite ≥2 example scenes. step-5 has a beat-type → scene map. beat-builder-guide makes the matching scene the #1 read.
 
-**Branch:** `feat/pipeline-quality-v2` (continued from prior session). 9 commits added this session.
+**Branch:** `feat/pipeline-quality-v2` (continued from prior session). 11 commits added this session.
 
 **What's deferred:** rendering a "Grand Tour" stitched reel (concat all 49 scenes into one MP4), agent self-test on a fresh worktree, mining the remaining archive projects for more lifts.
 
@@ -93,8 +94,9 @@ skills/website-to-hyperframes/examples/
 | `scene-09-scramble-decrypt` | 6s | Per-char intermediate substitution (hacker/intel feel) |
 | `scene-10-per-word-emphasis` | 8s | Per-word crossfade + hand-drawn circle marker overlay |
 | `scene-11-orbital-title` | 4s | Fraunces serif title + SVG accent + orbital ring + tagline type-on |
+| `scene-12-intro-kinetic-text` | 7s | Large-scale word stacks (Inter Black 220-500px, Playfair italic 520px) with gradient sweep fill |
 
-### Section 02 — Markers and Emphasis (6 scenes)
+### Section 02 — Markers and Emphasis (7 scenes)
 
 | Scene | Duration | Technique |
 |-------|----------|-----------|
@@ -104,6 +106,7 @@ skills/website-to-hyperframes/examples/
 | `scene-04-scribble-underline` | 6s | Wavy sine-path SVG stroke draw |
 | `scene-05-sketchout-x` | 6s | Two diagonal strokes + replacement phrase |
 | `scene-06-combined-marker-cascade` | 10s | All 5 markers cascading in one phrase |
+| `scene-07-magnetic-caption-webgl` | 5.5s | WebGL GLSL distortion + RGB chromatic aberration follows cursor over text |
 
 ### Section 03 — Easing Variety (1 scene)
 
@@ -111,7 +114,7 @@ skills/website-to-hyperframes/examples/
 |-------|----------|-----------|
 | `scene-01-css-animation-grid` | 3.5s | 6×3 grid of 17 pure-CSS animations |
 
-### Section 04 — Composed UI (10 scenes)
+### Section 04 — Composed UI (11 scenes)
 
 | Scene | Duration | Technique |
 |-------|----------|-----------|
@@ -125,6 +128,7 @@ skills/website-to-hyperframes/examples/
 | `scene-08-calendar-events` | 8s | Weekly grid + today highlight + popover + now-line |
 | `scene-09-phone-mockups` | 5s | 3D iPhones with fictional Pulse/Echo app screens |
 | `scene-10-terminal-with-preview` | 8s | Two-column: code typing left + mockup builds right |
+| `scene-11-timeline-editor-ui` | 9s | Code editor + video timeline scrubber with playhead + render HUD |
 
 ### Section 05 — Transitions Shader (1 scene)
 
@@ -167,7 +171,7 @@ skills/website-to-hyperframes/examples/
 | `scene-02-aurora-end-card` | 8s | Radial gradient + 12 particles + tri-color wordmark + install command type-on |
 | `scene-03-scan-line-grid` | 5.6s | CRT-adjacent: 3 sweep passes + grid overlay + telemetry HUD |
 
-### Section 11 — 3D and Parallax (4 scenes)
+### Section 11 — 3D and Parallax (5 scenes)
 
 | Scene | Duration | Technique |
 |-------|----------|-----------|
@@ -175,6 +179,7 @@ skills/website-to-hyperframes/examples/
 | `scene-02-vercel-triangle-roll` | 5.5s | Three.js pyramid rotating with multi-material grayscale faces |
 | `scene-03-card-flyby-deck` | 6s | CSS 3D card tumble + clip-path wipe (6 colored cards) |
 | `scene-04-anamorphic-text-crt` | 15s | Three.js 3D text morphing MOTION↔DESIGN + CRT HUD |
+| `scene-05-iphone-device-gesture` | 6.5s | CSS 3D iPhone with tap/swipe gesture overlays + composed app screen |
 
 ### Section 12 — Combined Vignettes (2 scenes)
 
@@ -235,7 +240,9 @@ skills/website-to-hyperframes/examples/
 
 ## HEYGEN VERSE ASSET IDS
 
-All 49 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow pattern `https://www.heygenverse.com/s/<asset-id>/raw`.
+All 53 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow pattern `https://www.heygenverse.com/s/<asset-id>/raw`.
+
+**Grand Tour reel (53 scenes concatenated, 5:58):** `bd3a5ac8-8b80-4dc8-af1b-20606a50456e`
 
 ### Section 01 — Typography
 | Scene | Asset ID |
@@ -251,6 +258,7 @@ All 49 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow
 | scene-09-scramble-decrypt | 54e9d483-0354-4979-8820-96ac665758df |
 | scene-10-per-word-emphasis | 9183e171-8e2a-408c-9319-ed8793128115 |
 | scene-11-orbital-title | cb7c4f6b-f4b9-47e1-b845-9772b45a9017 |
+| scene-12-intro-kinetic-text | bc6e60b5-e8bd-4b3d-b812-763ab76b0c11 |
 
 ### Section 02 — Markers and Emphasis
 | Scene | Asset ID |
@@ -261,6 +269,7 @@ All 49 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow
 | scene-04-scribble-underline | ce4da7a4-f256-4869-9ded-35ebb9343359 |
 | scene-05-sketchout-x | 400f3feb-7854-41f2-a32e-402346abb06c |
 | scene-06-combined-marker-cascade | b9c1b7e5-c75b-4b01-ba00-d03a1a1a3cf7 |
+| scene-07-magnetic-caption-webgl | d9571f33-730e-45fe-b7f0-b50a627f0be7 |
 
 ### Section 03 — Easing Variety
 | Scene | Asset ID |
@@ -280,6 +289,7 @@ All 49 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow
 | scene-08-calendar-events | d11b56d6-1a28-401d-a521-83bc8d05e138 |
 | scene-09-phone-mockups | 091012a4-f850-4e8d-875f-ad01c1cc8d1e |
 | scene-10-terminal-with-preview | 3c341a1e-90dc-4e66-a5c3-d5a007cf1e85 |
+| scene-11-timeline-editor-ui | 6e3d0d93-30ca-4940-9d9d-0c5231810770 |
 
 ### Section 05 — Transitions Shader
 | Scene | Asset ID |
@@ -323,6 +333,7 @@ All 49 scenes rendered to MP4 at draft quality (24fps) and uploaded. URLs follow
 | scene-02-vercel-triangle-roll | 202b7d97-3225-4e8f-9733-c7f20957bb47 |
 | scene-03-card-flyby-deck | 8b3e3c77-b83b-4ac3-96cb-a578b1bb1ec1 |
 | scene-04-anamorphic-text-crt | 73d97a8d-da17-48f0-82b6-f2bda9bd86fc |
+| scene-05-iphone-device-gesture | fb7d1f3d-0511-461a-86ad-9566f0fcdeff |
 
 ### Section 12 — Combined Vignettes
 | Scene | Asset ID |
@@ -510,9 +521,11 @@ batch_upload_assets supports up to 20 files at once. PUTs can run in parallel vi
 
 ---
 
-## THE 9 COMMITS
+## THE 11 COMMITS
 
 ```
+46629336  feat(skill): examples library batch 6 - 4 more archive lifts (53 scenes total)
+b2f4ee26  docs: HANDOFF-examples-library.md — 49 scenes, gallery live
 01e0098e  feat(skill): examples library batch 5 - 6 lifts from team archive
 68235f50  feat(skill): examples library scene 04-10 - terminal + live preview
 01ef4368  feat(skill): examples library batch 4 - sections 05 + 06 complete, library reaches 13/13
@@ -524,7 +537,7 @@ a877da70  feat(skill): examples library section 04 — composed UI, 8 scenes
 04827b98  feat(skill): examples library scaffold + section 01 (typography) — 10 scenes
 ```
 
-All on branch `feat/pipeline-quality-v2`, ahead of `origin/feat/pipeline-quality-v2` by 9 commits.
+All on branch `feat/pipeline-quality-v2`, ahead of `origin/feat/pipeline-quality-v2` by 11 commits.
 
 ---
 
