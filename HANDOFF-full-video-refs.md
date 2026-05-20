@@ -270,13 +270,43 @@ This is what a real production HyperFrames video looks like assembled. <duration
 
 ---
 
-## Verse asset IDs (filled in once uploaded)
+## Verse asset IDs (UPLOADED ✓)
 
 ```
-ref-01-launch-video-2.mp4:    <TODO — upload, paste asset ID>
-ref-02-claude-design-video.mp4: <TODO — upload, paste asset ID>
-ref-03-hermes-hyperframes.mp4: <TODO — upload, paste asset ID>
+ref-01-launch-video-2.mp4:    fb0a115b-81e6-4e3f-acae-6dbe8ef3def7
+   https://www.heygenverse.com/s/fb0a115b-81e6-4e3f-acae-6dbe8ef3def7/raw  (13MB, 41.8s)
+
+ref-02-claude-design-hyperframes-video.mp4: 0e1f0a40-351d-4a2d-9b18-139c095a42dd
+   https://www.heygenverse.com/s/0e1f0a40-351d-4a2d-9b18-139c095a42dd/raw  (19MB, 43.5s)
+
+ref-03-hermes-hyperframes.mp4: 51dbc7ce-42df-4a94-84ef-a10c302b4a2f
+   https://www.heygenverse.com/s/51dbc7ce-42df-4a94-84ef-a10c302b4a2f/raw  (11MB, 41.0s)
 ```
+
+## Source dirs lifted (ON DISK ✓)
+
+```
+examples/_full-video-refs/
+├── README.md                                     ← tier intro
+├── ref-01-launch-video-2/         (940K)
+│   ├── README.md + BEAT-MAP table
+│   ├── index.html + SCRIPT.md + STORYBOARD.md
+│   ├── compositions/ (act-1 + act-2 + act-3-reel + act-3-beats/ + act-4)
+│   ├── fonts/ + logos/
+│   └── (heygen-fullpage.png intentionally skipped — 8MB)
+├── ref-02-claude-design-hyperframes-video/   (316K)
+│   ├── README.md + BEAT-MAP table
+│   ├── index.html
+│   └── compositions/ (opener / claude-ui / moodboard / dashboard / grid / phones / letters / captions)
+│       (iteration dirs video-7-2/, video-9-2/, etc. intentionally skipped)
+└── ref-03-hermes-hyperframes/      (652K)
+    ├── README.md + BEAT-MAP + standalone-composition table
+    ├── index.html + SCRIPT.md + STORYBOARD.md
+    ├── compositions/ (parade + boot-sequence + binary-break + gsap-grid + shader-render + lottie-captions + deploy-cta + captions)
+    └── mockups/ (14 keyframe planning artifacts + bg/ palette/ parade/ parade-v2/ subdirs)
+```
+
+**Total disk size: 1.9MB** for all 3 refs (compositions + READMEs + planning docs + fonts/logos).
 
 ---
 

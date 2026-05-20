@@ -149,6 +149,18 @@ Need a specific technique? Use this table to find the canonical scene.
 - [`_shared/shared-styles.css`](_shared/shared-styles.css) — design tokens (color palette, type scale, spacing). Every scene `<link>`s this so the catalog feels cohesive.
 - [`_shared/easing-glossary.md`](_shared/easing-glossary.md) — the 7 production easings and when to use each. Single source of truth.
 
+## Full-Video References (new tier)
+
+The 81 numbered scenes above teach **vocabulary** — what individual beats can look like. The 3 refs in [`_full-video-refs/`](_full-video-refs/) teach **grammar** — how 4-10 beats assemble into a 40s video with narration, captions, intro hook, CTA close.
+
+- [**ref-01 launch-video-2**](_full-video-refs/ref-01-launch-video-2/) (41.8s) — 4 acts, stacked-beats arch, AI-agent IDE quartet. Watch: https://www.heygenverse.com/s/fb0a115b-81e6-4e3f-acae-6dbe8ef3def7/raw
+- [**ref-02 claude-design-hyperframes-video**](_full-video-refs/ref-02-claude-design-hyperframes-video/) (43.5s) — 10 beats, pre-rendered clip stitching, 1500+ line compositions. Watch: https://www.heygenverse.com/s/0e1f0a40-351d-4a2d-9b18-139c095a42dd/raw
+- [**ref-03 hermes-hyperframes**](_full-video-refs/ref-03-hermes-hyperframes/) (41.0s, 1080×1080 square) — 20 beats inside one composition, VHS/CRT aesthetic, Lottie integration. Watch: https://www.heygenverse.com/s/51dbc7ce-42df-4a94-84ef-a10c302b4a2f/raw
+
+Read the [tier README](_full-video-refs/README.md) for when to study each, the 3 architectural patterns, and what's deliberately not bundled.
+
+---
+
 ## Stitched Grand Tour reel
 
 All 81 scenes concatenated back-to-back as a single 9:22 MP4. Useful for visual-gestalt review or for sharing the library at a glance:

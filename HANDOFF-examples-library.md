@@ -1,12 +1,20 @@
 # HANDOFF — Examples Library (Sessions May 19, 2026)
 
-> **READ THIS BEFORE PICKING UP THE EXAMPLES LIBRARY WORK.** This is the followup to `HANDOFF.md`. This doc covers what was built May 19: the HyperFrames Capability Showcase example library, **81 scenes across 13 sections**, all rendered and uploaded, gallery app live, skill wiring updated to 3-mode framework, second-pass production-project survey (batch 10), plus seven rounds of hand-authored gap-fillers (batches 11-17).
+> **READ THIS BEFORE PICKING UP THE EXAMPLES LIBRARY WORK.** This is the second handoff in the series.
+> - `HANDOFF.md` covers pipeline-quality v2-v9 work through May 18.
+> - **This doc** covers the example library work (May 19, batches 7-17 + 18 workflow audit + 19 full-video refs).
+> - `HANDOFF-full-video-refs.md` covers the batch 19 lift plan in detail (Verse asset IDs, source dir layout, recovery instructions).
 
 ---
 
 ## TL;DR
 
-**What got built:** **81 production-grade example scenes** at `skills/website-to-hyperframes/examples/`, covering every HyperFrames technique. Each scene is standalone-renderable, lint-clean, snapshot-verified, composed 100% from HTML/CSS/SVG/GSAP/Canvas — zero captured screenshots. Plus a single concatenated "Grand Tour" reel (**9:22 MP4**) that plays all 81 back-to-back.
+**What got built across batches 7-19:**
+
+- **81 production-grade example scenes** at `skills/website-to-hyperframes/examples/` (sections 01-13). Standalone-renderable, lint-clean, snapshot-verified, composed 100% from HTML/CSS/SVG/GSAP/Canvas. Grand Tour reel at **9:22**.
+- **3-mode skill wiring** active across SKILL.md, step-3-storyboard, step-5-build, beat-builder-guide (batches 7-9).
+- **Workflow audit (batch 18, commit `851d62fc`)** — inverted the default visual strategy from "use captured assets" to "compose load-bearing visuals + assets-as-accents." Collapsed `step-1-design.md` from 615 → 157 lines. Added the manifesto in `SKILL.md` Step -1: "stop scrollers / alive every frame / physical world / go viral / get everything yourself."
+- **3 full-video references (batch 19)** — `examples/_full-video-refs/` now contains 3 real production launch reels (launch-video-2, claude-design-hyperframes-video, hermes-hyperframes) as a second tier teaching grammar (multi-beat assembly) on top of the 81 single-scene vocabulary.
 
 **Why:** `HANDOFF.md` Recommendation 1 said skill prose was exhausted as a lever (11 eval branches all produced slideshow videos regardless of prose changes). Recommendation 2 said: **show, don't tell** — build production-grade reference examples agents can use. This library is that.
 
