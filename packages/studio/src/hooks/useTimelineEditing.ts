@@ -55,43 +55,50 @@ function buildPatchTarget(element: { domId?: string; selector?: string; selector
   return null;
 }
 
-function findIframeElement(
-  iframe: HTMLIFrameElement | null,
-  element: { domId?: string; selector?: string; selectorIndex?: number },
-): Element | null {
-  const doc = iframe?.contentDocument;
-  if (!doc) return null;
-  if (element.domId) return doc.getElementById(element.domId);
-  if (!element.selector) return null;
-  return doc.querySelectorAll(element.selector)[element.selectorIndex ?? 0] ?? null;
-}
-
-const TIMING_ATTR_MAP: Record<string, string> = {
-  start: "data-start",
-  duration: "data-duration",
-  track: "data-track-index",
-};
-
 function patchIframeDomTiming(
   iframe: HTMLIFrameElement | null,
   element: TimelineElement,
-  updates: { start?: number; duration?: number; track?: number; playbackStart?: number },
+  attrs: Array<[string, string]>,
 ): void {
   try {
-    const el = findIframeElement(iframe, element);
+    const doc = iframe?.contentDocument;
+    if (!doc) return;
+    const el = element.domId
+      ? doc.getElementById(element.domId)
+      : element.selector
+        ? (doc.querySelectorAll(element.selector)[element.selectorIndex ?? 0] ?? null)
+        : null;
     if (!el) return;
-    for (const [key, attr] of Object.entries(TIMING_ATTR_MAP)) {
-      const val = updates[key as keyof typeof updates];
-      if (val != null) el.setAttribute(attr, formatTimelineAttributeNumber(val));
-    }
-    if (updates.playbackStart != null) {
-      const attr =
-        element.playbackStartAttr === "playback-start" ? "data-playback-start" : "data-media-start";
-      el.setAttribute(attr, formatTimelineAttributeNumber(updates.playbackStart));
-    }
+    for (const [name, value] of attrs) el.setAttribute(name, value);
   } catch {
     // Cross-origin or mid-navigation — safe to ignore, file is already saved.
   }
+}
+
+function resolveResizePlaybackStart(
+  original: string,
+  target: PatchTarget,
+  element: TimelineElement,
+  updates: Pick<TimelineElement, "start" | "playbackStart">,
+): { attrName: string; value: number } | null {
+  if (updates.playbackStart != null) {
+    const attrName =
+      element.playbackStartAttr === "playback-start" ? "playback-start" : "media-start";
+    return { attrName, value: updates.playbackStart };
+  }
+  const trimDelta = updates.start - element.start;
+  if (trimDelta === 0) return null;
+  const raw =
+    readAttributeByTarget(original, target, "playback-start") ??
+    readAttributeByTarget(original, target, "media-start");
+  const current = raw != null ? parseFloat(raw) : undefined;
+  if (current == null || !Number.isFinite(current)) return null;
+  const attrName =
+    element.playbackStartAttr === "playback-start" ? "playback-start" : "media-start";
+  return {
+    attrName,
+    value: Math.max(0, current + trimDelta * Math.max(element.playbackRate ?? 1, 0.1)),
+  };
 }
 
 type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
@@ -208,7 +215,10 @@ export function useTimelineEditing({
 
   const handleTimelineElementMove = useCallback(
     (element: TimelineElement, updates: Pick<TimelineElement, "start" | "track">) => {
-      patchIframeDomTiming(previewIframeRef.current, element, updates);
+      patchIframeDomTiming(previewIframeRef.current, element, [
+        ["data-start", formatTimelineAttributeNumber(updates.start)],
+        ["data-track-index", String(updates.track)],
+      ]);
       enqueueEdit(element, "Move timeline clip", (original, target) => {
         let patched = applyPatchByTarget(original, target, {
           type: "attribute",
@@ -230,28 +240,12 @@ export function useTimelineEditing({
       element: TimelineElement,
       updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
     ) => {
-      patchIframeDomTiming(previewIframeRef.current, element, updates);
+      patchIframeDomTiming(previewIframeRef.current, element, [
+        ["data-start", formatTimelineAttributeNumber(updates.start)],
+        ["data-duration", formatTimelineAttributeNumber(updates.duration)],
+      ]);
       enqueueEdit(element, "Resize timeline clip", (original, target) => {
-        const playbackStartAttrName =
-          element.playbackStartAttr === "playback-start" ? "playback-start" : "media-start";
-        const currentPlaybackStartValue =
-          readAttributeByTarget(original, target, "playback-start") ??
-          readAttributeByTarget(original, target, "media-start");
-        const currentPlaybackStart =
-          currentPlaybackStartValue != null ? parseFloat(currentPlaybackStartValue) : undefined;
-        const trimDelta = updates.start - element.start;
-        const fallbackPlaybackStart =
-          updates.playbackStart == null &&
-          trimDelta !== 0 &&
-          Number.isFinite(currentPlaybackStart) &&
-          currentPlaybackStart != null
-            ? Math.max(
-                0,
-                currentPlaybackStart + trimDelta * Math.max(element.playbackRate ?? 1, 0.1),
-              )
-            : undefined;
-        const nextPlaybackStart = updates.playbackStart ?? fallbackPlaybackStart;
-
+        const pbs = resolveResizePlaybackStart(original, target, element, updates);
         let patched = applyPatchByTarget(original, target, {
           type: "attribute",
           property: "start",
@@ -262,11 +256,11 @@ export function useTimelineEditing({
           property: "duration",
           value: formatTimelineAttributeNumber(updates.duration),
         });
-        if (nextPlaybackStart != null) {
+        if (pbs) {
           patched = applyPatchByTarget(patched, target, {
             type: "attribute",
-            property: playbackStartAttrName,
-            value: formatTimelineAttributeNumber(nextPlaybackStart),
+            property: pbs.attrName,
+            value: formatTimelineAttributeNumber(pbs.value),
           });
         }
         return patched;
