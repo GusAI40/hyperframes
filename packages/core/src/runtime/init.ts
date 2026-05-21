@@ -1244,6 +1244,13 @@ export function initSandboxRuntimeModular(): void {
 
   const bindMediaMetadataListeners = () => {
     if (state.tornDown) return;
+    for (const el of metadataBoundMedia) {
+      if (!el.isConnected) {
+        el.removeEventListener("loadedmetadata", scheduleMetadataDurationHydration);
+        el.removeEventListener("durationchange", scheduleMetadataDurationHydration);
+        metadataBoundMedia.delete(el);
+      }
+    }
     const mediaEls = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[];
     for (const mediaEl of mediaEls) {
       if (metadataBoundMedia.has(mediaEl)) continue;

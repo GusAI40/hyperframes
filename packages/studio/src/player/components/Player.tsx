@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { HyperframesLoader } from "../../components/ui";
+import { trackStudioEvent } from "../../utils/studioTelemetry";
 // NOTE: importing "@hyperframes/player" registers a class extending HTMLElement
 // at module load, which throws under SSR. Defer the import to the mount effect
 // so it only runs in the browser.
@@ -208,6 +209,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("ready", handleReady);
         player.addEventListener("error", handleError);
 
+        const handleGuardTripped = (e: Event) => {
+          const site = (e as CustomEvent).detail?.site;
+          if (site) trackStudioEvent("guard_triggered", { site });
+        };
+        player.addEventListener("guardtripped", handleGuardTripped);
+
         // Forward the iframe's native load event to the studio's onIframeLoad.
         const handleLoad = () => {
           loadCountRef.current++;
@@ -274,6 +281,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
             player.removeEventListener("ready", handleReady);
             player.removeEventListener("error", handleError);
+            player.removeEventListener("guardtripped", handleGuardTripped);
           }
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;

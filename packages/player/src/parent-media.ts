@@ -43,6 +43,7 @@ export class ParentMediaManager {
   private _mediaObserver?: MutationObserver;
   private _playbackErrorPosted = false;
   private _audioOwner: "runtime" | "parent" = "runtime";
+  private _guardFired = new Set<string>();
 
   private readonly _dispatchEvent: (event: Event) => void;
   private readonly _getMuted: () => boolean;
@@ -98,7 +99,11 @@ export class ParentMediaManager {
   destroy(): void {
     this.teardownObserver();
     for (const m of this._entries) {
-      if (typeof m.el.pause === "function") m.el.pause();
+      if (typeof m.el.pause !== "function") {
+        this._reportGuardTripped("destroy:pause");
+      } else {
+        m.el.pause();
+      }
       m.el.src = "";
     }
     this._entries = [];
@@ -118,14 +123,21 @@ export class ParentMediaManager {
 
   playAll(): void {
     for (const m of this._entries) {
-      if (!m.el.src || typeof m.el.play !== "function") continue;
+      if (!m.el.src || typeof m.el.play !== "function") {
+        if (m.el.src && typeof m.el.play !== "function") this._reportGuardTripped("playAll:play");
+        continue;
+      }
       m.el.play().catch((err: unknown) => this._reportPlaybackError(err));
     }
   }
 
   pauseAll(): void {
     for (const m of this._entries) {
-      if (typeof m.el.pause === "function") m.el.pause();
+      if (typeof m.el.pause !== "function") {
+        this._reportGuardTripped("pauseAll:pause");
+        continue;
+      }
+      m.el.pause();
     }
   }
 
@@ -232,6 +244,12 @@ export class ParentMediaManager {
     this._dispatchEvent(
       new CustomEvent("playbackerror", { detail: { source: "parent-proxy", error: err } }),
     );
+  }
+
+  private _reportGuardTripped(site: string): void {
+    if (this._guardFired.has(site)) return;
+    this._guardFired.add(site);
+    this._dispatchEvent(new CustomEvent("guardtripped", { detail: { site } }));
   }
 
   /**
