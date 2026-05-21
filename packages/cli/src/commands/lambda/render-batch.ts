@@ -36,6 +36,7 @@ import {
   reportVariableIssues,
   validateVariablesAgainstSchema,
 } from "../../utils/variables.js";
+import { warnOnDimensionMismatch } from "./_dimensions.js";
 import { requireStack } from "./state.js";
 
 // Dynamic-import the SDK so tsup keeps it out of the static-import head of
@@ -164,6 +165,14 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     errorBox("Empty batch", `${batchPath} contains zero entries (every line was blank).`);
     process.exit(1);
   }
+
+  warnOnDimensionMismatch({
+    projectDir,
+    cliWidth: args.width,
+    cliHeight: args.height,
+    outputResolution: args.outputResolution,
+    quiet: args.json,
+  });
 
   // Pre-validate every entry's variables against the composition's
   // schema. Mismatches print as warnings; strict mode aborts before any
