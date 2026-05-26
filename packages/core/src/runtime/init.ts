@@ -1278,6 +1278,9 @@ export function initSandboxRuntimeModular(): void {
         element.hasAttribute("data-start") ||
         Boolean(resolveMediaCompositionContext(element).compositionRoot),
       resolveStartSeconds: (element) => {
+        if (!element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")) {
+          return Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0);
+        }
         const context = resolveMediaCompositionContext(
           element as HTMLVideoElement | HTMLAudioElement,
         );
@@ -1285,7 +1288,10 @@ export function initSandboxRuntimeModular(): void {
       },
       resolveDurationSeconds: (element) => {
         const context = resolveMediaCompositionContext(element);
-        const start = resolveStartForElement(element, context.inheritedStart ?? 0);
+        const start =
+          !element.hasAttribute("data-hf-auto-start") && element.hasAttribute("data-start")
+            ? Math.max(0, Number(element.getAttribute("data-start") ?? 0) || 0)
+            : resolveStartForElement(element, context.inheritedStart ?? 0);
         const mediaStart =
           Number.parseFloat(element.dataset.playbackStart ?? element.dataset.mediaStart ?? "0") ||
           0;
@@ -1329,7 +1335,18 @@ export function initSandboxRuntimeModular(): void {
       const tag = rawNode.tagName.toLowerCase();
       if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") continue;
 
-      const start = resolveStartForElement(rawNode, 0);
+      // Media elements (video/audio) without data-hf-auto-start have their
+      // data-start authored in global time — the same contract used by the
+      // render pipeline's discoverMediaFromBrowser. Using resolveStartForElement
+      // would add the host composition's offset a second time, creating a
+      // double-offset that keeps the element permanently hidden when its host
+      // doesn't start at t=0. Auto-injected timing (data-hf-auto-start) is
+      // composition-local and still needs the resolver.
+      const isGlobalMediaStart =
+        (tag === "video" || tag === "audio") && !rawNode.hasAttribute("data-hf-auto-start");
+      const start = isGlobalMediaStart
+        ? Math.max(0, Number(rawNode.getAttribute("data-start") ?? 0) || 0)
+        : resolveStartForElement(rawNode, 0);
       let duration = resolveDurationForElement(rawNode);
       const compId = rawNode.getAttribute("data-composition-id");
       if (compId) {
