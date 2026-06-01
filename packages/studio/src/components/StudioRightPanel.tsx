@@ -12,6 +12,7 @@ import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MOTION_PANEL_ENABLED,
 } from "./editor/manualEditingAvailability";
+import { usePlayerStore } from "../player";
 
 /** Motion data without targeting metadata. */
 type StudioMotionData = Omit<StudioGsapMotion, "kind" | "target" | "updatedAt">;
@@ -91,6 +92,9 @@ export function StudioRightPanel({
     handleGsapUpdateFromProperty,
     handleGsapAddFromProperty,
     handleGsapRemoveFromProperty,
+    handleGsapAddKeyframe,
+    handleGsapRemoveKeyframe,
+    handleGsapConvertToKeyframes,
   } = useDomEditContext();
 
   const { assets, fontAssets, projectDir, handleImportFiles, handleImportFonts } =
@@ -223,6 +227,10 @@ export function StudioRightPanel({
                   onAddGsapFromProperty={handleGsapAddFromProperty}
                   onRemoveGsapFromProperty={handleGsapRemoveFromProperty}
                   onAddGsapAnimation={handleGsapAddAnimation}
+                  onAddKeyframe={handleGsapAddKeyframe}
+                  onRemoveKeyframe={handleGsapRemoveKeyframe}
+                  onConvertToKeyframes={handleGsapConvertToKeyframes}
+                  onSeekToTime={(time) => usePlayerStore.getState().setCurrentTime(time)}
                 />
               ) : motionPanelActive ? (
                 <MotionPanel

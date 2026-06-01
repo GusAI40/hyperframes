@@ -221,6 +221,9 @@ export function useDomEditSession({
     updateGsapFromProperty,
     addGsapFromProperty,
     removeGsapFromProperty,
+    addKeyframe,
+    removeKeyframe,
+    convertToKeyframes,
   } = useGsapScriptCommits({
     projectIdRef,
     activeCompPath,
@@ -340,6 +343,30 @@ export function useDomEditSession({
       removeGsapFromProperty(domEditSelection, animId, prop);
     },
     [domEditSelection, removeGsapFromProperty],
+  );
+
+  const handleGsapAddKeyframe = useCallback(
+    (animId: string, percentage: number, property: string, value: number | string) => {
+      if (!domEditSelection) return;
+      addKeyframe(domEditSelection, animId, percentage, property, value);
+    },
+    [domEditSelection, addKeyframe],
+  );
+
+  const handleGsapRemoveKeyframe = useCallback(
+    (animId: string, percentage: number) => {
+      if (!domEditSelection) return;
+      removeKeyframe(domEditSelection, animId, percentage);
+    },
+    [domEditSelection, removeKeyframe],
+  );
+
+  const handleGsapConvertToKeyframes = useCallback(
+    (animId: string) => {
+      if (!domEditSelection) return;
+      convertToKeyframes(domEditSelection, animId);
+    },
+    [domEditSelection, convertToKeyframes],
   );
 
   // Sync selection from preview document on load / refresh
@@ -482,5 +509,8 @@ export function useDomEditSession({
     handleGsapUpdateFromProperty,
     handleGsapAddFromProperty,
     handleGsapRemoveFromProperty,
+    handleGsapAddKeyframe,
+    handleGsapRemoveKeyframe,
+    handleGsapConvertToKeyframes,
   };
 }

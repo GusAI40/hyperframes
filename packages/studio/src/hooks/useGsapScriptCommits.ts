@@ -353,6 +353,45 @@ export function useGsapScriptCommits({
     [commitMutation],
   );
 
+  const addKeyframe = useCallback(
+    (
+      selection: DomEditSelection,
+      animationId: string,
+      percentage: number,
+      property: string,
+      value: number | string,
+    ) => {
+      void commitMutation(
+        selection,
+        { type: "add-keyframe", animationId, percentage, properties: { [property]: value } },
+        { label: `Add keyframe at ${percentage}%`, softReload: true },
+      );
+    },
+    [commitMutation],
+  );
+
+  const removeKeyframe = useCallback(
+    (selection: DomEditSelection, animationId: string, percentage: number) => {
+      void commitMutation(
+        selection,
+        { type: "remove-keyframe", animationId, percentage },
+        { label: `Remove keyframe at ${percentage}%`, softReload: true },
+      );
+    },
+    [commitMutation],
+  );
+
+  const convertToKeyframes = useCallback(
+    (selection: DomEditSelection, animationId: string) => {
+      void commitMutation(
+        selection,
+        { type: "convert-to-keyframes", animationId },
+        { label: "Convert to keyframes" },
+      );
+    },
+    [commitMutation],
+  );
+
   return {
     updateGsapProperty,
     updateGsapMeta,
@@ -363,5 +402,8 @@ export function useGsapScriptCommits({
     updateGsapFromProperty,
     addGsapFromProperty,
     removeGsapFromProperty,
+    addKeyframe,
+    removeKeyframe,
+    convertToKeyframes,
   };
 }
