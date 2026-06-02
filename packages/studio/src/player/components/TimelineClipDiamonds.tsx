@@ -28,7 +28,7 @@ interface TimelineClipDiamondsProps {
   onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
 }
 
-const DIAMOND_RATIO = 0.8;
+const DIAMOND_RATIO = 0.45;
 
 export const TimelineClipDiamonds = memo(function TimelineClipDiamonds({
   keyframesData,
