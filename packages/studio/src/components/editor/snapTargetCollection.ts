@@ -29,6 +29,10 @@ function readPositiveDimension(value: string | null): number | null {
 
 const IGNORED_TAGS = new Set(["script", "style", "link", "meta", "base", "template", "br", "wbr"]);
 
+function isHtmlElement(node: Node): node is HTMLElement {
+  return node.nodeType === 1;
+}
+
 function collectVisibleElements(
   root: HTMLElement,
   excludeElements: Set<HTMLElement>,
@@ -38,7 +42,7 @@ function collectVisibleElements(
   const visit = (el: HTMLElement) => {
     if (result.length >= maxItems) return;
     for (const child of Array.from(el.children)) {
-      if (!(child instanceof HTMLElement)) continue;
+      if (!isHtmlElement(child)) continue;
       if (IGNORED_TAGS.has(child.tagName.toLowerCase())) continue;
       if (child.hasAttribute("data-composition-id")) continue;
       if (excludeElements.has(child)) continue;
