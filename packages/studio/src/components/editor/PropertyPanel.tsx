@@ -1,7 +1,12 @@
 import { memo } from "react";
 import { Clock, Eye, Layers, MessageSquare, Move, X } from "../../icons/SystemIcons";
 import { type DomEditSelection } from "./domEditing";
-import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
+import {
+  readStudioBoxSize,
+  readStudioPathOffset,
+  readStudioRotation,
+  clearStudioBoxSize,
+} from "./manualEdits";
 import type { ImportedFontAsset } from "./fontAssets";
 import {
   EMPTY_STYLES,
@@ -334,67 +339,83 @@ export const PropertyPanel = memo(function PropertyPanel({
               scrub
               onCommit={(next) => commitManualOffset("y", next)}
             />
-            <MetricField
-              label="W"
-              value={isFitWidth ? "fit" : formatPxMetricValue(resolvedWidth)}
-              disabled={manualSizeEditingDisabled || isFitWidth}
-              scrub={!isFitWidth}
-              onCommit={(next) => commitManualSize("width", next)}
-            />
-            <MetricField
-              label="H"
-              value={isFitHeight ? "fit" : formatPxMetricValue(resolvedHeight)}
-              disabled={manualSizeEditingDisabled || isFitHeight}
-              scrub={!isFitHeight}
-              onCommit={(next) => commitManualSize("height", next)}
-            />
+          </div>
+          <div className="mt-2 flex items-center gap-1.5">
+            <div className="flex-1">
+              <MetricField
+                label="W"
+                value={isFitWidth ? "fit" : formatPxMetricValue(resolvedWidth)}
+                disabled={manualSizeEditingDisabled || isFitWidth}
+                scrub={!isFitWidth}
+                onCommit={(next) => commitManualSize("width", next)}
+              />
+            </div>
+            <div className="flex-1">
+              <MetricField
+                label="H"
+                value={isFitHeight ? "fit" : formatPxMetricValue(resolvedHeight)}
+                disabled={manualSizeEditingDisabled || isFitHeight}
+                scrub={!isFitHeight}
+                onCommit={(next) => commitManualSize("height", next)}
+              />
+            </div>
+            {element.capabilities.canApplyManualSize && (
+              <button
+                type="button"
+                className={`flex-shrink-0 rounded p-1 transition-colors ${
+                  isFitContent
+                    ? "text-studio-accent bg-studio-accent/10"
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
+                }`}
+                onClick={() => {
+                  if (isFitContent) {
+                    const bcr = element.element.getBoundingClientRect();
+                    onSetStyle("width", `${Math.round(bcr.width) || 100}px`);
+                    onSetStyle("height", `${Math.round(bcr.height) || 100}px`);
+                  } else {
+                    clearStudioBoxSize(element.element);
+                    onSetStyle("width", "fit-content");
+                    onSetStyle("height", "fit-content");
+                    element.element.style.setProperty("width", "fit-content");
+                    element.element.style.setProperty("height", "fit-content");
+                  }
+                }}
+                title={isFitContent ? "Fixed size" : "Fit to content"}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M2 4V2h2M10 2h2v2M12 10v2h-2M4 12H2v-2"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <rect
+                    x="4.5"
+                    y="4.5"
+                    width="5"
+                    height="5"
+                    rx="0.5"
+                    stroke="currentColor"
+                    strokeWidth="1"
+                    strokeDasharray="1.5 1.5"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+          <div className={`mt-2 ${RESPONSIVE_GRID}`}>
             <MetricField
               label="R"
               value={`${manualRotation.angle}°`}
               onCommit={(next) => commitManualRotation(next.replace("°", ""))}
             />
-          </div>
-          {element.capabilities.canApplyManualSize && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-[10px] text-neutral-500 uppercase tracking-wider">Size</span>
-              <div className="flex rounded-md overflow-hidden border border-neutral-700">
-                <button
-                  type="button"
-                  className={`px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
-                    !isFitContent
-                      ? "bg-neutral-700 text-neutral-200"
-                      : "bg-transparent text-neutral-500 hover:text-neutral-300"
-                  }`}
-                  onClick={() => {
-                    if (isFitContent) {
-                      const bcr = element.element.getBoundingClientRect();
-                      onSetStyle("width", `${Math.round(bcr.width) || 100}px`);
-                      onSetStyle("height", `${Math.round(bcr.height) || 100}px`);
-                    }
-                  }}
-                >
-                  Fixed
-                </button>
-                <button
-                  type="button"
-                  className={`px-2.5 py-0.5 text-[10px] font-medium transition-colors ${
-                    isFitContent
-                      ? "bg-neutral-700 text-neutral-200"
-                      : "bg-transparent text-neutral-500 hover:text-neutral-300"
-                  }`}
-                  onClick={() => {
-                    if (!isFitContent) {
-                      onSetStyle("width", "fit-content");
-                      onSetStyle("height", "fit-content");
-                    }
-                  }}
-                >
-                  Fit
-                </button>
-              </div>
-            </div>
-          )}
-          <div className="mt-3">
             <MetricField
               label="Z-index"
               value={String(parseInt(styles["z-index"] || "auto", 10) || 0)}
