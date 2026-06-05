@@ -184,3 +184,18 @@ jobs:
             fi
             gh release create "v${VERSION}" "${FLAGS[@]}"
           fi
+
+      - name: Purge jsDelivr cache for latest-tagged packages
+        if: steps.version.outputs.prerelease == 'false'
+        run: |
+          # jsDelivr caches unversioned URLs against the npm `latest` tag.
+          # After publishing a new stable release, purge so the unversioned
+          # CDN URLs immediately serve the new version instead of stale content.
+          urls=(
+            "https://purge.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js"
+            "https://purge.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.mjs"
+          )
+          for url in "${urls[@]}"; do
+            resp=$(curl -sf "$url" 2>/dev/null || echo '{"status":"error"}')
+            echo "Purged $url: $resp"
+          done
