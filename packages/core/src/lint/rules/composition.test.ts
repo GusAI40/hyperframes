@@ -1112,5 +1112,31 @@ describe("composition rules", () => {
       );
       expect(finding).toBeUndefined();
     });
+
+    it("does NOT fire when every sub-comp host uses data-track-index (native scheduling)", async () => {
+      // Bundled `warm-grain` example pattern: sub-comps are placed on
+      // parallel tracks via data-track-index and managed by the runtime.
+      // Master TL animates the A-roll (not sub-comp hosts), which is
+      // legitimate — sub-comps are static/CSS and don't expect master seeks.
+      const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="intro-layer" data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="2.5" data-track-index="1"></div>
+    <div id="graphics-layer" data-composition-id="graphics" data-composition-src="compositions/graphics.html" data-start="0" data-duration="10" data-track-index="2"></div>
+    <div id="captions-layer" data-composition-id="captions" data-composition-src="compositions/captions.html" data-start="0" data-duration="10" data-track-index="3"></div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#a-roll", { x: 600, duration: 4 });
+      window.__timelines["main"] = tl;
+    </script>
+  </div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = result.findings.find(
+        (f) => f.code === "master_timeline_orchestrates_sub_compositions",
+      );
+      expect(finding).toBeUndefined();
+    });
   });
 });

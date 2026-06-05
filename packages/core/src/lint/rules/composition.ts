@@ -759,7 +759,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     // start AND duration must be present for it to count as a beat host
     // (mirrors the "real" beat shape — a bare <div data-composition-id> with
     // no src/start is the root composition wrapper, not a beat).
-    type SubCompHost = { id: string; hostIdAttr?: string };
+    type SubCompHost = { id: string; hostIdAttr?: string; hasTrackIndex: boolean };
     const subCompHosts: SubCompHost[] = [];
     for (const tag of tags) {
       const id = readAttr(tag.raw, "data-composition-id");
@@ -767,13 +767,19 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       const start = readAttr(tag.raw, "data-start");
       const duration = readAttr(tag.raw, "data-duration");
       if (!id || !src || !start || !duration) continue;
-      // The wrapper may ALSO carry an `id=` attribute distinct from
-      // `data-composition-id` (e.g. `<div id="beat-1-host" data-composition-id="beat-1" ...>`).
-      // Capture it so we can recognize orchestration through that selector too.
       const hostIdAttr = readAttr(tag.raw, "id") || undefined;
-      subCompHosts.push({ id, hostIdAttr });
+      const hasTrackIndex = !!readAttr(tag.raw, "data-track-index");
+      subCompHosts.push({ id, hostIdAttr, hasTrackIndex });
     }
     if (subCompHosts.length < 2) return findings;
+
+    // FP guard: HyperFrames-native scheduling. When every sub-comp host carries
+    // `data-track-index`, the host is positioned by the runtime via its track
+    // (parallel layers) rather than driven by master GSAP. Sub-comps in this
+    // mode are typically static/CSS-only — they don't expect master-tl seeks.
+    // The hollow-master agent bug we want to catch uses sequential timelines
+    // *without* track indexes; that path still fires.
+    if (subCompHosts.every((h) => h.hasTrackIndex)) return findings;
 
     // Scan scripts for any orchestration of each sub-comp host id "X":
     //   (a) tl.fromTo('#X' or '[data-composition-id="X"]', { ... opacity|autoAlpha ... }, ...)
@@ -857,7 +863,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       if (orchestratedIds.has(host.id)) continue;
       const candidateIds = [host.id, host.hostIdAttr].filter(Boolean) as string[];
       for (const idVal of candidateIds) {
-        const escapedId = idVal.replace(/[-]/g, "\\$&");
+        const escapedId = idVal.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
         // Match `#<id>` followed by a non-id-character (so we don't match
         // `#beat-1` inside `#beat-12`).
         const refRe = new RegExp(`["'\\s,(\\[]#${escapedId}(?:[^A-Za-z0-9_-]|$)`);
