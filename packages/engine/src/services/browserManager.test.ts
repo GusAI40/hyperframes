@@ -321,6 +321,10 @@ describe("browser pool", () => {
 describe("memory-adaptive Chrome flags", () => {
   const base = { width: 1920, height: 1080 };
 
+  beforeEach(() => {
+    mockGetSystemTotalMb.mockReturnValue(32768);
+  });
+
   afterEach(() => {
     mockGetSystemTotalMb.mockReturnValue(32768);
   });
