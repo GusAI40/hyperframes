@@ -18,6 +18,16 @@ const SHORTCUT_SECTIONS = [
     ],
   },
   {
+    title: "Keyframes",
+    hints: [
+      { key: "K", label: "Add keyframe at playhead" },
+      { key: "Del", label: "Delete selected keyframe" },
+      { key: "H", label: "Toggle hold / bezier" },
+      { key: "U", label: "Expand / collapse properties" },
+      { key: "R", label: "Record gesture" },
+    ],
+  },
+  {
     title: "Work area",
     hints: [
       { key: "I", label: "Set in-point" },

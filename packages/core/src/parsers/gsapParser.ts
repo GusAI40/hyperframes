@@ -1055,7 +1055,15 @@ function applyUpdatesToCall(call: TweenCallInfo, updates: Partial<GsapAnimation>
     reconcileEditableProperties(call.fromArg, updates.fromProperties);
   }
   if (updates.duration !== undefined) setVarsKey(call.varsArg, "duration", updates.duration);
-  if (updates.ease !== undefined) setVarsKey(call.varsArg, "ease", updates.ease);
+  if (updates.ease !== undefined) {
+    const kfNode = findKeyframesObjectNode(call.varsArg);
+    if (kfNode) {
+      setVarsKey(kfNode, "easeEach", updates.ease);
+      removeVarsKey(call.varsArg, "ease");
+    } else {
+      setVarsKey(call.varsArg, "ease", updates.ease);
+    }
+  }
   if (updates.position !== undefined) {
     const posIdx = call.method === "fromTo" ? 3 : 2;
     call.node.arguments[posIdx] = parseExpr(valueToCode(updates.position));
@@ -1148,6 +1156,61 @@ export function addAnimationToScript(
     parsed.ast.program.body.push(newStatement);
   }
   return { script: recast.print(parsed.ast).code, id };
+}
+
+export function addAnimationWithKeyframesToScript(
+  script: string,
+  targetSelector: string,
+  position: number,
+  duration: number,
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }>,
+  ease?: string,
+): { script: string; id: string } {
+  let parsed: ParsedGsapAst;
+  try {
+    parsed = parseGsapAst(script);
+  } catch (e) {
+    console.warn("[gsap-parser] addAnimationWithKeyframesToScript parse failed:", e);
+    return { script, id: "" };
+  }
+  if (parsed.located.length === 0 && parsed.detection.timelineVar === null) {
+    return { script, id: "" };
+  }
+
+  const selector = JSON.stringify(targetSelector);
+  const kfEntries = keyframes.map((kf) => {
+    const propEntries = Object.entries(kf.properties).map(
+      ([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`,
+    );
+    if (kf.ease) propEntries.push(`ease: ${JSON.stringify(kf.ease)}`);
+    return `${JSON.stringify(`${kf.percentage}%`)}: { ${propEntries.join(", ")} }`;
+  });
+  const kfCode = `{ ${kfEntries.join(", ")} }`;
+  const varEntries = [`keyframes: ${kfCode}`, `duration: ${valueToCode(duration)}`];
+  if (ease) varEntries.push(`ease: ${JSON.stringify(ease)}`);
+  const posCode = valueToCode(position);
+  const stmtCode = `${parsed.timelineVar}.to(${selector}, { ${varEntries.join(", ")} }, ${posCode});`;
+
+  const newStatement = parseScript(stmtCode).program.body[0];
+  const lastCall = parsed.located[parsed.located.length - 1]?.call;
+  const anchorPath = lastCall
+    ? findStatementPath(lastCall.path)
+    : findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
+
+  if (anchorPath) {
+    anchorPath.insertAfter(newStatement);
+  } else {
+    parsed.ast.program.body.push(newStatement);
+  }
+
+  const result = recast.print(parsed.ast).code;
+  const reParsed = parseGsapAst(result);
+  const newId = reParsed.located[reParsed.located.length - 1]?.id ?? "";
+  return { script: result, id: newId };
 }
 
 /** Find the statement path of `const <timelineVar> = gsap.timeline(...)`. */

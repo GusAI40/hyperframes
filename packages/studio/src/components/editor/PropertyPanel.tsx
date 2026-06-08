@@ -472,17 +472,40 @@ export const PropertyPanel = memo(function PropertyPanel({
                     />
                   )}
                 </div>
-                <MetricField
-                  label="Scale"
-                  value={String(gsapRuntimeValues.scale ?? 1)}
-                  scrub
-                  onCommit={(next) => {
-                    const v = Number.parseFloat(next);
-                    if (Number.isFinite(v) && onCommitAnimatedProperty) {
-                      void onCommitAnimatedProperty(element, "scale", v);
-                    }
-                  }}
-                />
+                <div className="flex items-center gap-1">
+                  <div className="flex-1">
+                    <MetricField
+                      label="Scale"
+                      value={String(gsapRuntimeValues.scale ?? 1)}
+                      scrub
+                      onCommit={(next) => {
+                        const v = Number.parseFloat(next);
+                        if (Number.isFinite(v) && onCommitAnimatedProperty) {
+                          void onCommitAnimatedProperty(element, "scale", v);
+                        }
+                      }}
+                    />
+                  </div>
+                  {STUDIO_KEYFRAMES_ENABLED && (gsapAnimId || onCommitAnimatedProperty) && (
+                    <KeyframeNavigation
+                      property="scale"
+                      keyframes={gsapKeyframes}
+                      currentPercentage={currentPct}
+                      onSeek={(pct) => onSeekToTime?.(elStart + (pct / 100) * elDuration)}
+                      onAddKeyframe={() => {
+                        if (onCommitAnimatedProperty) {
+                          void onCommitAnimatedProperty(
+                            element,
+                            "scale",
+                            gsapRuntimeValues?.scale ?? 1,
+                          );
+                        }
+                      }}
+                      onRemoveKeyframe={(pct) => gsapAnimId && onRemoveKeyframe?.(gsapAnimId, pct)}
+                      onConvertToKeyframes={() => gsapAnimId && onConvertToKeyframes?.(gsapAnimId)}
+                    />
+                  )}
+                </div>
                 <MetricField
                   label="RotX"
                   value={`${gsapRuntimeValues.rotationX ?? 0}°`}

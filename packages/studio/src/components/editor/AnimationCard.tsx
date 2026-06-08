@@ -350,7 +350,7 @@ export const AnimationCard = memo(function AnimationCard({
   const [copied, setCopied] = useState(false);
 
   const methodLabel = METHOD_LABELS[animation.method] ?? animation.method;
-  const easeName = animation.ease ?? "none";
+  const easeName = animation.ease ?? animation.keyframes?.easeEach ?? "none";
   const easeLabel = easeName.startsWith("custom(")
     ? "Custom curve"
     : (EASE_LABELS[easeName] ?? easeName);
@@ -441,13 +441,13 @@ export const AnimationCard = memo(function AnimationCard({
               <>
                 <SelectField
                   label="Speed"
-                  value={
-                    animation.ease?.startsWith("custom(") ? "custom" : (animation.ease ?? "none")
-                  }
+                  value={easeName.startsWith("custom(") ? "custom" : easeName}
                   options={[...SUPPORTED_EASES, "custom"]}
                   onChange={(next) => {
                     if (next === "custom") {
-                      const points = controlPointsForGsapEase(animation.ease ?? "power2.out");
+                      const points = controlPointsForGsapEase(
+                        easeName !== "none" ? easeName : "power2.out",
+                      );
                       const path = `M0,0 C${points.x1},${points.y1} ${points.x2},${points.y2} 1,1`;
                       onUpdateMeta(animation.id, { ease: `custom(${path})` });
                     } else {
@@ -456,7 +456,7 @@ export const AnimationCard = memo(function AnimationCard({
                   }}
                 />
                 <EaseCurveSection
-                  ease={animation.ease ?? "none"}
+                  ease={easeName}
                   duration={animation.duration}
                   onCustomEaseCommit={(customEase) =>
                     onUpdateMeta(animation.id, { ease: customEase })

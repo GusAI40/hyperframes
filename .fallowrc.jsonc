@@ -31,6 +31,15 @@
     // Keyframe UI components — wired dynamically via EaseCurveSection/MotionPanel.
     "packages/studio/src/components/editor/KeyframeDiamond.tsx",
     "packages/studio/src/components/editor/SpringEaseEditor.tsx",
+    // MotionPathOverlay — rendered conditionally via DomEditOverlay.
+    "packages/studio/src/components/editor/MotionPathOverlay.tsx",
+    // AE-level keyframe Phase 2/3 components — scaffolded, wired in follow-up PRs.
+    "packages/studio/src/components/editor/DopesheetStrip.tsx",
+    "packages/studio/src/components/editor/StaggerControls.tsx",
+    "packages/studio/src/hooks/gsapRuntimePreview.ts",
+    "packages/studio/src/hooks/useKeyframeKeyboard.ts",
+    "packages/studio/src/player/components/TimelinePropertyRows.tsx",
+    "packages/studio/src/utils/audioBeatDetection.ts",
   ],
   "ignorePatterns": [
     "docs/**",
@@ -109,6 +118,17 @@
         "measureCaptureCostFromSession",
         "logCaptureCalibrationResult",
         "createFailedCaptureCalibrationEstimate",
+      ],
+    },
+    // propertyPanelHelpers: exported utility functions used conditionally by
+    // PropertyPanel features behind feature flags or consumed by external tools.
+    {
+      "file": "packages/studio/src/components/editor/propertyPanelHelpers.ts",
+      "exports": [
+        "EMPTY_FILTER_VALUE",
+        "BOX_SHADOW_PRESETS",
+        "clampPanelNumber",
+        "computeFitToChildrenSize",
       ],
     },
   ],

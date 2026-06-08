@@ -13,6 +13,11 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { clearStudioPathOffset } from "../components/editor/manualEdits";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeKeyframes";
+import {
+  absoluteToPercentage,
+  resolveTweenStart,
+  resolveTweenDuration,
+} from "../utils/globalTimeCompiler";
 
 // ── Runtime reads ──────────────────────────────────────────────────────────
 
@@ -91,10 +96,17 @@ function selectorForSelection(selection: DomEditSelection): string | null {
 
 // ── Percentage computation ─────────────────────────────────────────────────
 
-function computeCurrentPercentage(selection: DomEditSelection): number {
+function computeCurrentPercentage(selection: DomEditSelection, animation?: GsapAnimation): number {
+  const currentTime = usePlayerStore.getState().currentTime;
+  if (animation) {
+    const start = resolveTweenStart(animation);
+    const duration = resolveTweenDuration(animation);
+    if (start !== null) {
+      return absoluteToPercentage(currentTime, start, duration);
+    }
+  }
   const elStart = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
   const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
-  const currentTime = usePlayerStore.getState().currentTime;
   return elDuration > 0
     ? Math.max(0, Math.min(100, Math.round(((currentTime - elStart) / elDuration) * 1000) / 10))
     : 0;
@@ -275,7 +287,7 @@ async function commitKeyframedPosition(
   callbacks: GsapDragCommitCallbacks,
   beforeReload: () => void,
 ): Promise<void> {
-  const pct = computeCurrentPercentage(selection);
+  const pct = computeCurrentPercentage(selection, anim);
 
   await callbacks.commitMutation(
     selection,
@@ -308,7 +320,7 @@ async function commitFlatViaKeyframes(
     { label: "Convert to keyframes for drag", skipReload: true },
   );
 
-  const pct = computeCurrentPercentage(selection);
+  const pct = computeCurrentPercentage(selection, anim);
 
   await callbacks.commitMutation(
     selection,
@@ -461,7 +473,7 @@ export async function tryGsapResizeIntercept(
   }
   if (!anim) return false;
 
-  const pct = computeCurrentPercentage(selection);
+  const pct = computeCurrentPercentage(selection, anim);
 
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
     const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
@@ -545,7 +557,7 @@ export async function tryGsapRotationIntercept(
     }
   }
 
-  const pct = computeCurrentPercentage(selection);
+  const pct = computeCurrentPercentage(selection, anim);
   const newRotation = Math.round(gsapRotation + angle);
 
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {

@@ -671,7 +671,19 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
         cp1?: { x: number; y: number };
         cp2?: { x: number; y: number };
       }
-    | { type: "remove-arc-path"; animationId: string };
+    | { type: "remove-arc-path"; animationId: string }
+    | {
+        type: "add-with-keyframes";
+        targetSelector: string;
+        position: number;
+        duration: number;
+        keyframes: Array<{
+          percentage: number;
+          properties: Record<string, number | string>;
+          ease?: string;
+        }>;
+        ease?: string;
+      };
 
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, (id) => `/projects/${id}/gsap-mutations/`, {
@@ -881,6 +893,19 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       case "remove-arc-path": {
         const { removeArcPathFromScript } = await loadGsapParser();
         newScript = removeArcPathFromScript(block.scriptText, body.animationId);
+        break;
+      }
+      case "add-with-keyframes": {
+        const { addAnimationWithKeyframesToScript } = await loadGsapParser();
+        const result = addAnimationWithKeyframesToScript(
+          block.scriptText,
+          body.targetSelector,
+          body.position,
+          body.duration,
+          body.keyframes,
+          body.ease,
+        );
+        newScript = result.script;
         break;
       }
       default:

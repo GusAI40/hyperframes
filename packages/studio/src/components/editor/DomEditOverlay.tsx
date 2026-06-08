@@ -157,6 +157,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     groupOverlayItems,
     groupOverlayItemsRef,
     setGroupOverlayItems,
+    childRects,
   } = useDomEditOverlayRects({
     iframeRef,
     overlayRef,
@@ -483,6 +484,19 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           </div>
         </>
       )}
+      {childRects.length > 0 &&
+        childRects.map((cr, i) => (
+          <div
+            key={i}
+            className="pointer-events-none absolute border border-dashed border-white/20 rounded-sm"
+            style={{
+              left: cr.left,
+              top: cr.top,
+              width: cr.width,
+              height: cr.height,
+            }}
+          />
+        ))}
       <GridOverlay
         visible={gridVisible}
         spacing={gridSpacing}

@@ -16,6 +16,7 @@ import {
   updateKeyframeInScript,
   convertToKeyframesInScript,
   removeAllKeyframesFromScript,
+  addAnimationWithKeyframesToScript,
 } from "./gsapParser.js";
 import type { GsapAnimation } from "./gsapParser.js";
 import type { Keyframe } from "../core.types";
@@ -1637,5 +1638,69 @@ describe("motionPath parsing", () => {
     expect(anim.arcPath).toBeUndefined();
     expect(anim.properties.x).toBe(100);
     expect(anim.properties.y).toBe(200);
+  });
+});
+
+// ── addAnimationWithKeyframesToScript ──────────────────────────────────────
+
+describe("addAnimationWithKeyframesToScript", () => {
+  const BASE = `
+const tl = gsap.timeline({ paused: true });
+tl.to("#title", { x: 100, duration: 0.5 }, 0);
+  `.trim();
+
+  it("adds a new tween with keyframes after existing tweens", () => {
+    const { script, id } = addAnimationWithKeyframesToScript(BASE, "#box", 3, 0.5, [
+      { percentage: 0, properties: { x: 0 } },
+      { percentage: 100, properties: { x: 200 } },
+    ]);
+    expect(script).toContain("#box");
+    expect(script).toContain("keyframes");
+    expect(script).toContain('"0%"');
+    expect(script).toContain('"100%"');
+    expect(id).toBeTruthy();
+
+    const parsed = parseGsapScript(script);
+    expect(parsed.animations.length).toBe(2);
+    const newAnim = parsed.animations[1];
+    expect(newAnim.targetSelector).toBe("#box");
+    expect(newAnim.keyframes).toBeDefined();
+    expect(newAnim.keyframes!.keyframes.length).toBe(2);
+  });
+
+  it("preserves existing tween code", () => {
+    const { script } = addAnimationWithKeyframesToScript(BASE, "#new", 2, 1, [
+      { percentage: 0, properties: { opacity: 0 } },
+      { percentage: 100, properties: { opacity: 1 } },
+    ]);
+    expect(script).toContain("#title");
+    expect(script).toContain("x: 100");
+  });
+
+  it("produces a stable ID for the new animation", () => {
+    const { script, id } = addAnimationWithKeyframesToScript(BASE, "#el", 1, 1, [
+      { percentage: 0, properties: { y: 0 } },
+      { percentage: 100, properties: { y: 100 } },
+    ]);
+    expect(id).toContain("#el");
+    const parsed = parseGsapScript(script);
+    const match = parsed.animations.find((a) => a.id === id);
+    expect(match).toBeDefined();
+  });
+
+  it("includes per-keyframe ease when provided", () => {
+    const { script } = addAnimationWithKeyframesToScript(BASE, "#el", 0, 1, [
+      { percentage: 0, properties: { x: 0 }, ease: "power2.out" },
+      { percentage: 100, properties: { x: 100 } },
+    ]);
+    expect(script).toContain("power2.out");
+  });
+
+  it("returns original script on parse failure", () => {
+    const { script, id } = addAnimationWithKeyframesToScript("not valid js {{", "#el", 0, 1, [
+      { percentage: 0, properties: { x: 0 } },
+    ]);
+    expect(script).toBe("not valid js {{");
+    expect(id).toBe("");
   });
 });
