@@ -27,6 +27,8 @@ hyperframes sfx add <id>                                # → assets/sfx/<id>.mp
 
 `sfx add` writes the clip to `assets/sfx/` and prints its analysis (peak time, onset/tail, loudness) — use it to trim and anchor per the global doc. If `HEYGEN_API_KEY` isn't set, `sfx` prints how to get a free key; ask the user for one or build without SFX — don't silently drop them.
 
+**Background music** (optional, storyboard-driven). If `STORYBOARD.md`'s Global Direction names a music bed, search and download it the same way with `hyperframes music search` / `music add` — output lands in `assets/music/<id>.<ext>`. Volume hierarchy is different from SFX (BGM `0.4–0.6` under VO; `0.7–0.9` pure-music) and there's no auto-ducking; see [`background-music.md`](background-music.md) for when music helps vs hurts, manual ducking patterns, and the one-bed-per-video rule.
+
 ## Known landmines — read before writing each beat composition
 
 The rules below came out of cell-A through cell-H website-capture builds across heygen.com, raycast.com, huly.io, and airbnb.com in 2026-04 → 2026-05. Beat compositions that lint clean still ship broken without these — text that mask-reveals to nothing, sub-agents that silently overwrite each other's HTML. The linter cannot catch most of these; the author must.
