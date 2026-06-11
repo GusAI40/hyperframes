@@ -12,11 +12,20 @@ export {
   executeRenderJob,
   RenderCancelledError,
   type RenderConfig,
+  type RenderConfigInput,
   type RenderJob,
   type RenderStatus,
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
+export {
+  type BrowserDiagnosticSummary,
+  type RenderCaptureObservability,
+  type RenderObservabilitySummary,
+  type RenderObservationData,
+  type RenderObservationEvent,
+  type RenderObservationStatus,
+} from "./services/render/observability.js";
 
 // ── Frame capture (lower-level) ─────────────────────────────────────────────
 export {
@@ -67,6 +76,7 @@ export {
 } from "./server.js";
 
 // ── Utilities ───────────────────────────────────────────────────────────────
+export { normalizeErrorMessage } from "./utils/errorMessage.js";
 export { quantizeTimeToFrame } from "./utils/parityContract.js";
 export { resolveRenderPaths, type RenderPaths } from "./utils/paths.js";
 

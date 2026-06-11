@@ -31,6 +31,7 @@ declare global {
     __clipManifest?: RuntimeTimelineMessage;
     __playerReady?: boolean;
     __renderReady?: boolean;
+    __hfRuntimeTeardown?: (() => void) | null;
     __HF_PARITY_MODE?: boolean;
     __HF_FPS?: number;
     __HF_MAX_DURATION_SEC?: number;
@@ -104,6 +105,17 @@ declare global {
      * resolved values for the instance currently executing.
      */
     __hfVariablesByComp?: Record<string, Record<string, unknown>>;
+    /**
+     * Set to `true` while the GSAP tween-batching interceptor (injected via
+     * HF_EARLY_STUB in fileServer.ts) is still draining queued tween calls
+     * through requestAnimationFrame batches. Cleared and the "hf-timelines-built"
+     * CustomEvent is dispatched when all queues are empty.
+     *
+     * init.ts uses this to decide whether to defer `bindRootTimelineIfAvailable`:
+     * if true at DOMContentLoaded time, it adds a one-shot event listener and
+     * rebinds after the event fires.
+     */
+    __hfTimelinesBuilding?: boolean;
   }
 }
 

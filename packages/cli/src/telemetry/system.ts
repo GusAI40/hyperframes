@@ -1,5 +1,13 @@
-import { cpus, totalmem, platform, release } from "node:os";
+import { cpus, totalmem, freemem, platform, release } from "node:os";
 import { existsSync, readFileSync, statfsSync } from "node:fs";
+import { execSync } from "node:child_process";
+import {
+  detectAgentRuntime,
+  detectSandboxRuntime,
+  type AgentRuntime,
+  type SandboxRuntime,
+} from "./agent_runtime.js";
+import { detectWSL } from "./platform.js";
 
 // ---------------------------------------------------------------------------
 // System metadata collected once per CLI session and attached to all events.
@@ -23,6 +31,23 @@ export interface SystemMeta {
   ci_name: string | null;
   is_wsl: boolean;
   is_tty: boolean;
+  /**
+   * Managed sandbox runtime hosting this invocation, when one is detectable
+   * (gvisor / firecracker / docker / kvm / wsl). null on a normal dev
+   * machine. Lets us distinguish "real laptop" from "ephemeral cloud
+   * sandbox driving the CLI" without geo guesswork.
+   */
+  sandbox_runtime: SandboxRuntime;
+  /**
+   * Coding-agent vendor that spawned this process, if any (see the
+   * `AgentRuntime` union in agent_runtime.ts for the full, current set).
+   * Most rules check env-var existence only — values are never read; a few
+   * use filesystem/kernel markers (e.g. the Gemini managed-agent mount).
+   * Every rule keys on a marker with a source citation in agent_runtime.ts;
+   * unverified guesses are deliberately omitted (false-negative > guess).
+   * null when no agent is detected.
+   */
+  agent_runtime: AgentRuntime;
 }
 
 let cached: SystemMeta | null = null;
@@ -48,6 +73,8 @@ export function getSystemMeta(): SystemMeta {
     ci_name: getCIName(),
     is_wsl: detectWSL(),
     is_tty: Boolean(process.stdout?.isTTY),
+    sandbox_runtime: detectSandboxRuntime(),
+    agent_runtime: detectAgentRuntime(),
   };
   return cached;
 }
@@ -70,42 +97,38 @@ function detectDocker(): boolean {
   return false;
 }
 
+// Named providers come first so getCIName() picks the most specific match.
+// `truthy` accepts 'true' or '1'; `presence` matches any non-null value.
+type CIProvider =
+  | { name: string | null; envVar: string; mode: "truthy" }
+  | { name: string | null; envVar: string; mode: "presence" };
+
+const CI_PROVIDERS: CIProvider[] = [
+  { name: "github_actions", envVar: "GITHUB_ACTIONS", mode: "truthy" },
+  { name: "gitlab_ci", envVar: "GITLAB_CI", mode: "truthy" },
+  { name: "circleci", envVar: "CIRCLECI", mode: "truthy" },
+  { name: "jenkins", envVar: "JENKINS_URL", mode: "presence" },
+  { name: "buildkite", envVar: "BUILDKITE", mode: "truthy" },
+  { name: "travis", envVar: "TRAVIS", mode: "truthy" },
+  { name: null, envVar: "CONTINUOUS_INTEGRATION", mode: "truthy" },
+  { name: null, envVar: "CI", mode: "truthy" },
+];
+
+function matchesProvider(p: CIProvider): boolean {
+  const v = process.env[p.envVar];
+  if (p.mode === "presence") return v != null;
+  return v === "true" || v === "1";
+}
+
 function detectCI(): boolean {
-  return (
-    process.env["CI"] === "true" ||
-    process.env["CI"] === "1" ||
-    process.env["CONTINUOUS_INTEGRATION"] === "true" ||
-    process.env["GITHUB_ACTIONS"] === "true" ||
-    process.env["GITLAB_CI"] === "true" ||
-    process.env["CIRCLECI"] === "true" ||
-    process.env["JENKINS_URL"] != null ||
-    process.env["BUILDKITE"] === "true" ||
-    process.env["TRAVIS"] === "true" ||
-    false
-  );
+  return CI_PROVIDERS.some(matchesProvider);
 }
 
 function getCIName(): string | null {
-  if (process.env["GITHUB_ACTIONS"] === "true") return "github_actions";
-  if (process.env["GITLAB_CI"] === "true") return "gitlab_ci";
-  if (process.env["CIRCLECI"] === "true") return "circleci";
-  if (process.env["JENKINS_URL"] != null) return "jenkins";
-  if (process.env["BUILDKITE"] === "true") return "buildkite";
-  if (process.env["TRAVIS"] === "true") return "travis";
-  if (detectCI()) return "unknown";
-  return null;
-}
-
-function detectWSL(): boolean {
-  if (platform() !== "linux") return false;
-  try {
-    const osRelease = release().toLowerCase();
-    if (osRelease.includes("microsoft") || osRelease.includes("wsl")) return true;
-    const procVersion = readFileSync("/proc/version", "utf-8").toLowerCase();
-    return procVersion.includes("microsoft") || procVersion.includes("wsl");
-  } catch {
-    return false;
+  for (const provider of CI_PROVIDERS) {
+    if (provider.name && matchesProvider(provider)) return provider.name;
   }
+  return detectCI() ? "unknown" : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,4 +159,54 @@ export function getFreeDiskMb(path: string = "."): number | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Get available memory in MB, accounting for OS-level page caching.
+ *
+ * `os.freemem()` on macOS returns only truly free pages — ignoring
+ * inactive/purgeable/speculative pages that the kernel reclaims on demand.
+ * On a 24 GB Mac this reports ~0.1 GB "free" when ~5 GB is actually
+ * available. Linux has a similar (milder) issue; its kernel exposes the
+ * correct value via `MemAvailable` in /proc/meminfo.
+ */
+export function getAvailableMemoryMb(): number {
+  const fallback = bytesToMb(freemem());
+
+  if (platform() === "darwin") {
+    try {
+      const raw = execSync("vm_stat", { encoding: "utf-8", timeout: 5000 });
+      const pageSize = parseInt(raw.match(/page size of (\d+)/)?.[1] ?? "0", 10);
+      if (!pageSize) return fallback;
+
+      const pages = (key: string) =>
+        parseInt(raw.match(new RegExp(`${key}:\\s+(\\d+)`))?.[1] ?? "0", 10);
+
+      const available =
+        (pages("Pages free") +
+          pages("Pages inactive") +
+          pages("Pages purgeable") +
+          pages("Pages speculative")) *
+        pageSize;
+
+      return available > 0 ? bytesToMb(available) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  if (platform() === "linux") {
+    try {
+      const meminfo = readFileSync("/proc/meminfo", "utf-8");
+      const match = meminfo.match(/MemAvailable:\s+(\d+)\s+kB/);
+      if (match) {
+        return Math.trunc(parseInt(match[1]!, 10) / 1024);
+      }
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  return fallback;
 }

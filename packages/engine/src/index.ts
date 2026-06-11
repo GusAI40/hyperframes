@@ -44,6 +44,11 @@ export type {
 
 // ── Configuration ──────────────────────────────────────────────────────────────
 export { resolveConfig, DEFAULT_CONFIG, type EngineConfig } from "./config.js";
+export {
+  getSystemTotalMb,
+  isLowMemorySystem,
+  LOW_MEMORY_TOTAL_MB_THRESHOLD,
+} from "./services/systemMemory.js";
 
 // ── Browser management ─────────────────────────────────────────────────────────
 export {
@@ -135,7 +140,12 @@ export {
 export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
 
 export { parseAudioElements, processCompositionAudio } from "./services/audioMixer.js";
-export type { AudioElement, AudioTrack, MixResult } from "./services/audioMixer.types.js";
+export type {
+  AudioElement,
+  AudioTrack,
+  AudioVolumeKeyframe,
+  MixResult,
+} from "./services/audioMixer.types.js";
 
 // ── Parallel rendering ─────────────────────────────────────────────────────────
 export {
@@ -178,13 +188,15 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
-export { downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";
+export { assertPublicHttpsUrl, downloadToTemp, isHttpUrl } from "./utils/urlDownloader.js";
 export {
   runFfmpeg,
   formatFfmpegError,
   type RunFfmpegOptions,
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";
+
+export { trackChildProcess, killTrackedProcesses } from "./utils/processTracker.js";
 
 export {
   decodePng,

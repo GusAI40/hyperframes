@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
-import { scopeCssToComposition, wrapScopedCompositionScript } from "./compositionScoping";
+import {
+  scopeCssToComposition,
+  wrapInlineScriptWithErrorBoundary,
+  wrapScopedCompositionScript,
+} from "./compositionScoping";
 
 describe("composition scoping", () => {
   it("scopes regular selectors while preserving global at-rules", () => {
@@ -144,6 +148,28 @@ body { margin: 0; }
     new Function("window", wrapped)(fakeWindow);
 
     expect(variablesByComp["card-1"]).toEqual({ title: "Pro" });
+  });
+
+  it("preserves static methods on classes exposed through window", () => {
+    const { document } = parseHTML(`<div data-composition-id="scene"></div>`);
+    class FakeTexts {
+      static mountChars() {
+        return "ok";
+      }
+    }
+    const fakeWindow: Record<string, unknown> = {
+      document,
+      __timelines: {},
+      Texts: FakeTexts,
+    };
+    const wrapped = wrapScopedCompositionScript(
+      `window.__capturedMountCharsType = typeof window.Texts?.mountChars;`,
+      "scene",
+    );
+
+    new Function("window", wrapped)(fakeWindow);
+
+    expect(fakeWindow.__capturedMountCharsType).toBe("function");
   });
 
   it("executes document and GSAP selectors inside the composition root", () => {
@@ -495,6 +521,76 @@ window.__afterTimeline = window.__timelines.scene;
     expect(fakeWindow.__beforeTimeline).toBe("initial");
     expect(fakeWindow.__afterTimeline).toBe("updated");
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("uses compound selector when authored root is the scoped element itself", () => {
+    const scoped = scopeCssToComposition(
+      "#chrome-overlay-root { --primary: #FFDC8B; }",
+      "chrome-overlay",
+      undefined,
+      "chrome-overlay-root",
+      { compoundAuthoredRoot: true },
+    );
+
+    // Both attributes are on the same element after inlining, so the selector
+    // must be compound (no space) to match.
+    expect(scoped).toContain(
+      '[data-composition-id="chrome-overlay"][data-hf-authored-id="chrome-overlay-root"]',
+    );
+    expect(scoped).not.toContain(
+      '[data-composition-id="chrome-overlay"] [data-hf-authored-id="chrome-overlay-root"]',
+    );
+  });
+
+  it("uses compound selector for authored root with descendant combinators", () => {
+    const scoped = scopeCssToComposition(
+      "#chrome-overlay-root .chrome { display: flex; }",
+      "chrome-overlay",
+      undefined,
+      "chrome-overlay-root",
+      { compoundAuthoredRoot: true },
+    );
+
+    // The authored root part is compound with scope, .chrome is a descendant
+    expect(scoped).toContain(
+      '[data-composition-id="chrome-overlay"][data-hf-authored-id="chrome-overlay-root"] .chrome',
+    );
+    expect(scoped).not.toMatch(
+      /\[data-composition-id="chrome-overlay"\]\s+\[data-hf-authored-id="chrome-overlay-root"\]\s+\.chrome/,
+    );
+  });
+
+  it("still uses descendant selector for non-root selectors with authoredRootId", () => {
+    const scoped = scopeCssToComposition(
+      ".child-element { color: red; }",
+      "chrome-overlay",
+      undefined,
+      "chrome-overlay-root",
+    );
+
+    // Regular child selectors still get a descendant combinator (space)
+    expect(scoped).toContain('[data-composition-id="chrome-overlay"] .child-element');
+  });
+
+  it("escapes </script> in scoped composition script source to prevent injection", () => {
+    const wrapped = wrapScopedCompositionScript(
+      'window.payload = "</script><script>window.pwned = true;</script>";',
+      "scene",
+    );
+
+    expect(wrapped).toContain("(function(document, gsap, window, __hyperframes)");
+    expect(wrapped).not.toContain("</script><script>");
+    expect(wrapped).toContain("<\\/script>");
+  });
+
+  it("wraps unscoped composition script source as a string literal", () => {
+    const wrapped = wrapInlineScriptWithErrorBoundary(
+      'window.payload = "</script><script>window.pwned = true;</script>";',
+      "[HyperFrames] composition script error:",
+    );
+
+    expect(wrapped).toContain("Function(");
+    expect(wrapped).toContain('\\"</script><script>window.pwned = true;</script>\\"');
   });
 
   it("rewrites #id CSS selectors to [data-hf-authored-id] when authoredRootId is provided", () => {

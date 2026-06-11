@@ -7,6 +7,35 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { shouldHandleTimelineToggleHotkey, isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 
+/** Safely resolves contentWindow for a potentially cross-origin iframe. */
+function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
+  try {
+    return iframe?.contentWindow ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Handles Cmd/Ctrl+Z (undo) and Cmd/Ctrl+Shift+Z / Ctrl+Y (redo) key events.
+ * Returns true if the event was handled, false otherwise.
+ */
+// fallow-ignore-next-line complexity
+function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () => void): boolean {
+  const key = event.key.toLowerCase();
+  if (key === "z" && !event.shiftKey) {
+    event.preventDefault();
+    onUndo();
+    return true;
+  }
+  if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
+    event.preventDefault();
+    onRedo();
+    return true;
+  }
+  return false;
+}
+
 // ── Types ──
 
 interface EditHistoryHandle {
@@ -33,6 +62,7 @@ interface EditHistoryHandle {
 interface UseAppHotkeysParams {
   toggleTimelineVisibility: () => void;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void>;
+  handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (selection: DomEditSelection) => Promise<void>;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   clearDomSelectionRef: React.MutableRefObject<() => void>;
@@ -48,6 +78,10 @@ interface UseAppHotkeysParams {
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
   handleCut: () => Promise<boolean>;
+  onResetKeyframes: () => boolean;
+  onDeleteSelectedKeyframes: () => void;
+  onAfterUndoRedo?: () => void;
+  onToggleRecording?: () => void;
 }
 
 // ── Hook ──
@@ -55,6 +89,7 @@ interface UseAppHotkeysParams {
 export function useAppHotkeys({
   toggleTimelineVisibility,
   handleTimelineElementDelete,
+  handleTimelineElementSplit,
   handleDomEditElementDelete,
   domEditSelectionRef,
   editHistory,
@@ -69,6 +104,10 @@ export function useAppHotkeys({
   handleCopy,
   handlePaste,
   handleCut,
+  onResetKeyframes,
+  onDeleteSelectedKeyframes,
+  onAfterUndoRedo,
+  onToggleRecording,
 }: UseAppHotkeysParams) {
   const previewHotkeyWindowRef = useRef<Window | null>(null);
   const handleAppKeyDownRef = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
@@ -115,6 +154,7 @@ export function useAppHotkeys({
       return;
     }
     if (result.ok && result.label) {
+      onAfterUndoRedo?.();
       await syncHistoryPreviewAfterApply(result.paths);
       showToast(`Undid ${result.label}`, "info");
     }
@@ -125,6 +165,7 @@ export function useAppHotkeys({
     syncHistoryPreviewAfterApply,
     waitForPendingDomEditSaves,
     writeHistoryProjectFile,
+    onAfterUndoRedo,
   ]);
 
   const handleRedo = useCallback(async () => {
@@ -138,6 +179,7 @@ export function useAppHotkeys({
       return;
     }
     if (result.ok && result.label) {
+      onAfterUndoRedo?.();
       await syncHistoryPreviewAfterApply(result.paths);
       showToast(`Redid ${result.label}`, "info");
     }
@@ -148,6 +190,7 @@ export function useAppHotkeys({
     syncHistoryPreviewAfterApply,
     waitForPendingDomEditSaves,
     writeHistoryProjectFile,
+    onAfterUndoRedo,
   ]);
 
   // ── Stable refs for the consolidated keydown handler ──
@@ -156,6 +199,8 @@ export function useAppHotkeys({
   handleToggleRef.current = handleTimelineToggleHotkey;
   const handleDeleteRef = useRef(handleTimelineElementDelete);
   handleDeleteRef.current = handleTimelineElementDelete;
+  const handleSplitRef = useRef(handleTimelineElementSplit);
+  handleSplitRef.current = handleTimelineElementSplit;
   const handleDomEditDeleteRef = useRef(handleDomEditElementDelete);
   handleDomEditDeleteRef.current = handleDomEditElementDelete;
   const handleUndoRef = useRef(handleUndo);
@@ -168,6 +213,12 @@ export function useAppHotkeys({
   handlePasteRef.current = handlePaste;
   const handleCutRef = useRef(handleCut);
   handleCutRef.current = handleCut;
+  const onResetKeyframesRef = useRef(onResetKeyframes);
+  onResetKeyframesRef.current = onResetKeyframes;
+  const onDeleteSelectedKeyframesRef = useRef(onDeleteSelectedKeyframes);
+  onDeleteSelectedKeyframesRef.current = onDeleteSelectedKeyframes;
+  const onToggleRecordingRef = useRef(onToggleRecording);
+  onToggleRecordingRef.current = onToggleRecording;
 
   // ── Consolidated keydown handler ──
 
@@ -177,18 +228,15 @@ export function useAppHotkeys({
 
     // Cmd/Ctrl+Z — undo, Cmd/Ctrl+Shift+Z or Ctrl+Y — redo
     if (event.metaKey || event.ctrlKey) {
-      if (!shouldIgnoreHistoryShortcut(event.target)) {
-        const key = event.key.toLowerCase();
-        if (key === "z" && !event.shiftKey) {
-          event.preventDefault();
-          void handleUndoRef.current();
-          return;
-        }
-        if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
-          event.preventDefault();
-          void handleRedoRef.current();
-          return;
-        }
+      if (
+        !shouldIgnoreHistoryShortcut(event.target) &&
+        handleUndoRedoKey(
+          event,
+          () => void handleUndoRef.current(),
+          () => void handleRedoRef.current(),
+        )
+      ) {
+        return;
       }
 
       // Cmd/Ctrl+1 — sidebar: Compositions tab
@@ -248,7 +296,49 @@ export function useAppHotkeys({
       }
     }
 
-    // Delete / Backspace — remove selected element (timeline clip or preview selection)
+    // F — toggle fullscreen preview
+    if (
+      event.key.toLowerCase() === "f" &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !isEditableTarget(event.target)
+    ) {
+      event.preventDefault();
+      if (document.fullscreenElement) {
+        void document.exitFullscreen();
+      } else {
+        document.querySelector<HTMLElement>("[data-studio-fullscreen-target]")?.requestFullscreen();
+      }
+      return;
+    }
+
+    // S — split selected clip at playhead
+    if (
+      event.key === "s" &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !isEditableTarget(event.target)
+    ) {
+      const { selectedElementId, elements, currentTime } = usePlayerStore.getState();
+      if (selectedElementId) {
+        const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
+        if (
+          element &&
+          ["video", "audio", "img"].includes(element.tag) &&
+          currentTime > element.start &&
+          currentTime < element.start + element.duration
+        ) {
+          event.preventDefault();
+          void handleSplitRef.current(element, currentTime);
+          return;
+        }
+      }
+    }
+
+    // Delete / Backspace — remove selected keyframes > reset keyframes > remove element
     if (
       (event.key === "Delete" || event.key === "Backspace") &&
       !event.metaKey &&
@@ -256,6 +346,26 @@ export function useAppHotkeys({
       !event.altKey &&
       !isEditableTarget(event.target)
     ) {
+      // Priority: selected keyframes take precedence over clip deletion
+      const { selectedKeyframes } = usePlayerStore.getState();
+      if (selectedKeyframes.size > 0) {
+        onDeleteSelectedKeyframesRef.current();
+        usePlayerStore.getState().clearSelectedKeyframes();
+        event.preventDefault();
+        return;
+      }
+
+      // Backspace: try resetting keyframes first; fall through to delete if none found
+      if (event.key === "Backspace") {
+        const { selectedElementId, keyframeCache } = usePlayerStore.getState();
+        if (selectedElementId && keyframeCache.has(selectedElementId)) {
+          if (onResetKeyframesRef.current()) {
+            event.preventDefault();
+            return;
+          }
+        }
+      }
+
       const { selectedElementId, elements } = usePlayerStore.getState();
       if (selectedElementId) {
         const element = elements.find((el) => (el.key ?? el.id) === selectedElementId);
@@ -270,6 +380,20 @@ export function useAppHotkeys({
         event.preventDefault();
         void handleDomEditDeleteRef.current(domSelection);
       }
+    }
+
+    // R — toggle gesture recording
+    if (
+      event.key === "r" &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      !isEditableTarget(event.target) &&
+      onToggleRecordingRef.current
+    ) {
+      event.preventDefault();
+      onToggleRecordingRef.current();
     }
   };
 
@@ -292,13 +416,21 @@ export function useAppHotkeys({
 
   const syncPreviewTimelineHotkey = useCallback(
     (iframe: HTMLIFrameElement | null) => {
-      const nextWindow = iframe?.contentWindow ?? null;
+      const nextWindow = iframeContentWindow(iframe);
       if (previewHotkeyWindowRef.current === nextWindow) return;
       if (previewHotkeyWindowRef.current) {
-        previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
+        try {
+          previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
+        } catch {
+          /* cross-origin iframe */
+        }
       }
       previewHotkeyWindowRef.current = nextWindow;
-      nextWindow?.addEventListener("keydown", previewAppKeyDownHandler, true);
+      try {
+        nextWindow?.addEventListener("keydown", previewAppKeyDownHandler, true);
+      } catch {
+        /* cross-origin iframe */
+      }
     },
     [previewAppKeyDownHandler],
   );
@@ -306,7 +438,11 @@ export function useAppHotkeys({
   useEffect(
     () => () => {
       if (previewHotkeyWindowRef.current) {
-        previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
+        try {
+          previewHotkeyWindowRef.current.removeEventListener("keydown", previewAppKeyDownHandler);
+        } catch {
+          /* cross-origin iframe */
+        }
         previewHotkeyWindowRef.current = null;
       }
     },
@@ -318,16 +454,11 @@ export function useAppHotkeys({
   const handleHistoryHotkey = useCallback((event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey)) return;
     if (shouldIgnoreHistoryShortcut(event.target)) return;
-    const key = event.key.toLowerCase();
-    if (key === "z" && !event.shiftKey) {
-      event.preventDefault();
-      void handleUndoRef.current();
-      return;
-    }
-    if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
-      event.preventDefault();
-      void handleRedoRef.current();
-    }
+    handleUndoRedoKey(
+      event,
+      () => void handleUndoRef.current(),
+      () => void handleRedoRef.current(),
+    );
   }, []);
 
   const syncPreviewHistoryHotkey = useCallback(
@@ -335,7 +466,7 @@ export function useAppHotkeys({
       previewHistoryHotkeyCleanupRef.current?.();
       previewHistoryHotkeyCleanupRef.current = null;
 
-      const win = iframe?.contentWindow ?? null;
+      const win = iframeContentWindow(iframe);
       let doc: Document | null = null;
       try {
         doc = iframe?.contentDocument ?? null;
@@ -344,10 +475,18 @@ export function useAppHotkeys({
       }
       if (!win && !doc) return;
 
-      win?.addEventListener("keydown", handleHistoryHotkey, true);
+      try {
+        win?.addEventListener("keydown", handleHistoryHotkey, true);
+      } catch {
+        /* cross-origin */
+      }
       doc?.addEventListener("keydown", handleHistoryHotkey, true);
       previewHistoryHotkeyCleanupRef.current = () => {
-        win?.removeEventListener("keydown", handleHistoryHotkey, true);
+        try {
+          win?.removeEventListener("keydown", handleHistoryHotkey, true);
+        } catch {
+          /* cross-origin */
+        }
         doc?.removeEventListener("keydown", handleHistoryHotkey, true);
       };
     },

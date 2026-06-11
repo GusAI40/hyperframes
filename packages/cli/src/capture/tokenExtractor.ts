@@ -305,21 +305,13 @@ const EXTRACT_SCRIPT = `(() => {
     var inLogoContext = svg.closest('[class*="logo"], [class*="brand"], [class*="partner"], [class*="customer"], [class*="marquee"]') !== null;
     if (!label && !inLogoContext && (!w || parseInt(w) < 16)) return null;
     var rect = svg.getBoundingClientRect();
-    // Compute the parent landmark so the downstream namer can split logo-* into
-    // header-logo-* (visible brand mark) vs partner-logo-* (logo wall) vs plain logo-*.
-    var landmark = null;
-    var landmarkEl = svg.closest("header, nav, main, footer, aside");
-    if (landmarkEl) landmark = landmarkEl.tagName.toLowerCase();
-    var inPartnerContext = svg.closest('[class*="partner"], [class*="customer"], [class*="marquee"], [class*="logos"]') !== null;
     return {
       label: label || undefined,
       viewBox: svg.getAttribute("viewBox") || undefined,
       width: Math.round(rect.width),
       height: Math.round(rect.height),
       outerHTML: svg.outerHTML.slice(0, 10000),
-      isLogo: (label && label.toLowerCase().indexOf("logo") !== -1) || svg.closest('[class*="logo"], [class*="brand"], [class*="home"], [class*="marquee"], [class*="partner"], [class*="customer"]') !== null,
-      parentLandmark: landmark,
-      inPartnerContext: inPartnerContext
+      isLogo: (label && label.toLowerCase().indexOf("logo") !== -1) || svg.closest('[class*="logo"], [class*="brand"], [class*="home"], [class*="marquee"], [class*="partner"], [class*="customer"]') !== null
     };
   }).filter(Boolean).slice(0, 50);
 

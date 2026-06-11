@@ -16,7 +16,12 @@
  * results per §2.4).
  */
 
-import type { DistributedFormat, DistributedRenderConfig } from "@hyperframes/producer/distributed";
+import type {
+  DistributedFormat,
+  SerializableDistributedRenderConfig,
+} from "@hyperframes/producer/distributed";
+
+export type { SerializableDistributedRenderConfig } from "@hyperframes/producer/distributed";
 
 /** Discriminator for the three roles the one Lambda image fulfills. */
 export type LambdaAction = "plan" | "renderChunk" | "assemble";
@@ -81,18 +86,17 @@ export interface AssembleEvent {
   OutputS3Uri: string;
   /** Output container format; drives file vs frame-dir handling. */
   Format: DistributedFormat;
+  /**
+   * Optional exact-CFR re-encode at assemble time. When `true`, the final
+   * assembled video is re-encoded with `-fps_mode cfr -r <fps>` so the
+   * stream's `avg_frame_rate` matches the container's `r_frame_rate`
+   * exactly (and the file's duration is exact, not PTS-derived). Trade-off
+   * is ~2-5x the assemble wall-clock. mp4 only — webm / mov stream-copy
+   * paths already produce exact avg_frame_rate. Default `false` /
+   * unset preserves current `-c copy` behavior.
+   */
+  Cfr?: boolean;
 }
-
-/**
- * `DistributedRenderConfig` minus the runtime-only fields (`logger`,
- * `abortSignal`, `producerConfig`). The Step Functions event JSON cannot
- * carry function references; the handler reconstitutes the runtime fields
- * from Lambda environment + the AbortController it owns.
- */
-export type SerializableDistributedRenderConfig = Omit<
-  DistributedRenderConfig,
-  "logger" | "abortSignal" | "producerConfig"
->;
 
 // ── Result types — kept small to fit Step Functions history budgets ─────────
 

@@ -10,13 +10,14 @@
  */
 
 import type { Page } from "puppeteer-core";
+import { parseAnimatedGifMetadata } from "@hyperframes/core";
 
 export interface CatalogedAsset {
   url: string;
   type: "Image" | "Video" | "Font" | "Icon" | "Background" | "Other";
   contexts: string[];
   notes?: string;
-  /** Alt text, figcaption, or aria-label (soft mashup — kept for legacy consumers) */
+  /** Alt text, figcaption, or aria-label */
   description?: string;
   /** Nearest heading (h1-h4) text */
   nearestHeading?: string;
@@ -24,27 +25,6 @@ export interface CatalogedAsset {
   sectionClasses?: string;
   /** Whether the image is above the fold (visible without scrolling) */
   aboveFold?: boolean;
-  // ── New (June 2026 best-practice signal cascade) ──
-  /** Raw `<img alt>` only — no fallback. Cleaner than `description`. */
-  altText?: string;
-  /** Raw `aria-label` or `<svg><title>` text. */
-  ariaLabel?: string;
-  /** Last path segment of the closest enclosing `<a href>` (e.g. /partners/google → "google"). */
-  enclosingHref?: string;
-  /** The closest HTML landmark ancestor: header / nav / main / footer / aside. */
-  parentLandmark?: "header" | "nav" | "main" | "footer" | "aside" | null;
-  /** True when any class/id on the asset OR its container matches /logo|brand|mark/i. */
-  containerHasLogoRegex?: boolean;
-  /** Rendered bbox via getBoundingClientRect — used server-side for partner-wall cluster detection. */
-  bbox?: { x: number; y: number; width: number; height: number };
-  /** True when the asset URL matches schema.org/Organization.logo (JSON-LD canonical brand mark). */
-  isCanonicalLogo?: boolean;
-  /** Computed server-side after cataloging:
-   *  - "header-logo" — canonical brand logo (JSON-LD or header+logo-regex)
-   *  - "partner-strip-N-i" — i-th asset in the N-th detected partner-wall cluster
-   *  - "nav" / "hero" / "footer" / "content" — from parentLandmark fallback
-   */
-  slotRole?: string;
 }
 
 /**
@@ -53,50 +33,11 @@ export interface CatalogedAsset {
 export async function catalogAssets(page: Page): Promise<CatalogedAsset[]> {
   const assets = await page.evaluate(`(() => {
     var assetMap = {};
-    var LOGO_REGEX = /logo|brand|mark/i;
 
-    // Page-level pre-pass: canonical-logo URLs (JSON-LD schema.org/Organization.logo).
-    // This is the highest-trust signal — the site's own self-declaration of its primary
-    // brand mark, used by Google for Knowledge Panels. We collect them once per page and
-    // tag matching assets later.
-    var canonicalLogoUrls = new Set();
-    try {
-      var ldNodes = document.querySelectorAll('script[type="application/ld+json"]');
-      for (var i = 0; i < ldNodes.length; i++) {
-        try {
-          var parsed = JSON.parse(ldNodes[i].textContent || 'null');
-          var queue = Array.isArray(parsed) ? parsed.slice() : (parsed ? [parsed] : []);
-          while (queue.length) {
-            var item = queue.shift();
-            if (!item || typeof item !== 'object') continue;
-            if (Array.isArray(item['@graph'])) queue.push.apply(queue, item['@graph']);
-            var t = item['@type'];
-            var isOrg = t === 'Organization' || (Array.isArray(t) && t.indexOf('Organization') >= 0)
-                     || t === 'WebSite' || t === 'WebPage' || t === 'LocalBusiness';
-            if (isOrg && item.logo) {
-              var logoUrl = typeof item.logo === 'string' ? item.logo : (item.logo.url || item.logo['@id']);
-              if (logoUrl) {
-                try { canonicalLogoUrls.add(new URL(logoUrl, document.baseURI).href); } catch(e) {}
-              }
-            }
-          }
-        } catch(e) {}
-      }
-    } catch(e) {}
-
-    // Extract rich DOM context from any element (heading, section, position, slot signals)
+    // Extract rich DOM context from any element (heading, section, position)
     function getElementContext(el) {
       var ctx = {};
-      // Alt text + aria-label (raw, separately) — for the new naming cascade
-      if (el.alt) ctx.altText = String(el.alt).slice(0, 150);
-      var aria = el.getAttribute('aria-label');
-      if (aria) ctx.ariaLabel = String(aria).slice(0, 150);
-      // SVG <title> child — common for inline SVG icons/logos
-      if (!ctx.ariaLabel && el.tagName === 'svg') {
-        var titleEl = el.querySelector('title');
-        if (titleEl && titleEl.textContent) ctx.ariaLabel = titleEl.textContent.trim().slice(0, 150);
-      }
-      // description = soft mashup (legacy): alt || aria || title || figcaption
+      // Alt text, aria-label, figcaption
       var desc = el.alt || el.getAttribute('aria-label') || el.getAttribute('title') || '';
       var fig = el.closest('figure');
       if (fig) {
@@ -109,51 +50,17 @@ export async function catalogAssets(page: Page): Promise<CatalogedAsset[]> {
         if (descEl) desc = desc || descEl.textContent.trim().slice(0, 100);
       }
       if (desc) ctx.description = desc.slice(0, 150);
-      // Enclosing anchor → last path segment (often the brand name: /partners/google → "google")
-      var anchor = el.closest('a[href]');
-      if (anchor) {
-        try {
-          var href = anchor.getAttribute('href') || '';
-          var parsed = new URL(href, document.baseURI);
-          var segs = parsed.pathname.split('/').filter(function(s) { return s.length > 0 && s.length < 40; });
-          if (segs.length > 0) ctx.enclosingHref = segs[segs.length - 1];
-        } catch(e) {}
-      }
-      // Parent HTML landmark (header/nav/main/footer/aside) — for slot-role classification
-      var landmark = el.closest('header, nav, main, footer, aside');
-      if (landmark) ctx.parentLandmark = landmark.tagName.toLowerCase();
-      // Container-has-logo-regex: scan the asset's own classes + nearest 3 ancestors
-      var node = el, hops = 0;
-      while (node && hops < 4) {
-        var cls = (node.className || '').toString();
-        var nid = node.id || '';
-        if (LOGO_REGEX.test(cls) || LOGO_REGEX.test(nid)) {
-          ctx.containerHasLogoRegex = true;
-          break;
-        }
-        node = node.parentElement;
-        hops++;
-      }
-      // Nearest heading + section classes (legacy, kept)
+      // Nearest heading
       var section = el.closest('section, article, header, footer, main, [class*="hero"], [class*="banner"], [class*="feature"]');
       if (section) {
         var heading = section.querySelector('h1, h2, h3, h4');
         if (heading) ctx.nearestHeading = heading.textContent.trim().slice(0, 80);
         ctx.sectionClasses = (section.className || '').toString().slice(0, 120);
       }
-      // Bbox (rendered position + size) — used server-side for partner-wall cluster detection.
-      // aboveFold is kept as a derived legacy field.
+      // Above fold?
       try {
         var rect = el.getBoundingClientRect();
         ctx.aboveFold = rect.top < window.innerHeight;
-        if (rect.width > 0 && rect.height > 0) {
-          ctx.bbox = {
-            x: Math.round(rect.x),
-            y: Math.round(rect.y),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height)
-          };
-        }
       } catch(e) {}
       return ctx;
     }
@@ -185,21 +92,12 @@ export async function catalogAssets(page: Page): Promise<CatalogedAsset[]> {
       if (notes && !entry.notes) {
         entry.notes = notes;
       }
-      // Highest-trust signal: site's own JSON-LD declaration of its primary brand mark.
-      if (canonicalLogoUrls.has(url) && !entry.isCanonicalLogo) entry.isCanonicalLogo = true;
-      // Merge rich context (first one wins for each field)
+      // Merge rich context (first one wins)
       if (richCtx) {
         if (richCtx.description && !entry.description) entry.description = richCtx.description;
         if (richCtx.nearestHeading && !entry.nearestHeading) entry.nearestHeading = richCtx.nearestHeading;
         if (richCtx.sectionClasses && !entry.sectionClasses) entry.sectionClasses = richCtx.sectionClasses;
         if (richCtx.aboveFold !== undefined && entry.aboveFold === undefined) entry.aboveFold = richCtx.aboveFold;
-        // New signal cascade fields
-        if (richCtx.altText && !entry.altText) entry.altText = richCtx.altText;
-        if (richCtx.ariaLabel && !entry.ariaLabel) entry.ariaLabel = richCtx.ariaLabel;
-        if (richCtx.enclosingHref && !entry.enclosingHref) entry.enclosingHref = richCtx.enclosingHref;
-        if (richCtx.parentLandmark && !entry.parentLandmark) entry.parentLandmark = richCtx.parentLandmark;
-        if (richCtx.containerHasLogoRegex && !entry.containerHasLogoRegex) entry.containerHasLogoRegex = true;
-        if (richCtx.bbox && !entry.bbox) entry.bbox = richCtx.bbox;
       }
     }
 
@@ -332,94 +230,65 @@ export async function catalogAssets(page: Page): Promise<CatalogedAsset[]> {
   const raw = (assets as CatalogedAsset[]) || [];
 
   // Deduplicate srcset resolution variants — keep highest resolution per base URL
-  const deduped = deduplicateSrcsetVariants(raw);
-
-  // ── Server-side post-pass: partner-wall cluster detection + slot-role classification ──
-  // The browser-side cataloger captured bbox + altText + ariaLabel + parentLandmark + …
-  // We run cluster detection HERE (cleaner in TS than in injected JS) and tag each asset
-  // with its slotRole. Layer 0 of the June 2026 best-practice signal cascade.
-  detectPartnerWallsAndAssignSlotRoles(deduped);
-
-  return deduped;
+  return annotateGifAssetMetadata(deduplicateSrcsetVariants(raw));
 }
 
-/**
- * Partner-wall cluster detection.
- *
- * The bug we're fixing: on partner/customer/logo walls (e.g. Airbnb's "Trusted by"),
- * N≥4 logos share the same parent section + same nearest heading. The legacy
- * heading-as-slug approach mislabeled them (`heygen-logo.svg` → Google's content)
- * because slug priority was DOM-context, not asset-content.
- *
- * The 2026-consensus fix is to detect the cluster geometrically: imgs with similar
- * bbox height + same y-coord (±20px) + N≥4 members form a horizontal partner strip.
- * Each member gets `slotRole = "partner-strip-{cluster}-{position}"` instead of
- * inheriting the section's heading.
- *
- * After detection, the remaining assets get a slot-role from their parentLandmark
- * (header / nav / main / footer / aside) + isCanonicalLogo flag.
- *
- * In-place mutation of the input array (sets `slotRole` per asset).
- */
-export function detectPartnerWallsAndAssignSlotRoles(catalog: CatalogedAsset[]): void {
-  // Step 1: filter to logo-shaped candidates (small, has bbox).
-  // Empirical thresholds for partner-wall logos: width 40–300px, height 16–100px.
-  const candidates = catalog.filter((a) => {
-    if (!a.bbox) return false;
-    if (a.type !== "Image" && a.type !== "Icon" && a.type !== "Background") return false;
-    const { width: w, height: h } = a.bbox;
-    return w >= 40 && w <= 300 && h >= 16 && h <= 100;
-  });
+function isGifUrl(url: string): boolean {
+  try {
+    return new URL(url).pathname.toLowerCase().endsWith(".gif");
+  } catch {
+    return url.toLowerCase().split(/[?#]/, 1)[0]?.endsWith(".gif") ?? false;
+  }
+}
 
-  // Step 2: cluster by similar y-coord and similar height.
-  // Each candidate joins the first existing group whose ref bbox matches; else
-  // starts a new group. (Greedy single-pass — good enough for typical partner walls.)
-  const groups: CatalogedAsset[][] = [];
-  for (const c of candidates) {
-    const cb = c.bbox!;
-    let placed = false;
-    for (const g of groups) {
-      const ref = g[0]!.bbox!;
-      const yClose = Math.abs(cb.y - ref.y) < 20;
-      const hSim = Math.abs(cb.height - ref.height) / Math.max(ref.height, 1) < 0.3;
-      if (yClose && hSim) {
-        g.push(c);
-        placed = true;
-        break;
+function appendNote(existing: string | undefined, note: string): string {
+  return existing ? `${existing}; ${note}` : note;
+}
+
+async function readAssetBytes(url: string): Promise<Uint8Array | null> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) return null;
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && Number.parseInt(contentLength, 10) > 25 * 1024 * 1024) return null;
+    return new Uint8Array(await response.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+export async function annotateGifAssetMetadata(
+  assets: CatalogedAsset[],
+  readBytes: (url: string) => Promise<Uint8Array | null> = readAssetBytes,
+): Promise<CatalogedAsset[]> {
+  return Promise.all(
+    assets.map(async (asset) => {
+      if (!isGifUrl(asset.url)) return asset;
+      const bytes = await readBytes(asset.url);
+      if (!bytes) return asset;
+      const metadata = parseAnimatedGifMetadata(bytes);
+      if (!metadata) return asset;
+      if (!metadata.animated) {
+        return {
+          ...asset,
+          notes: appendNote(asset.notes, "single-frame GIF"),
+        };
       }
-    }
-    if (!placed) groups.push([c]);
-  }
-
-  // Step 3: clusters with ≥4 members are partner walls. Tag each member with
-  // slotRole = "partner-strip-{ci}-{pi}" (sorted by x-coord = reading order).
-  const partnerClusters = groups.filter((g) => g.length >= 4);
-  partnerClusters.forEach((cluster, ci) => {
-    cluster.sort((a, b) => a.bbox!.x - b.bbox!.x);
-    cluster.forEach((asset, pi) => {
-      asset.slotRole = `partner-strip-${ci + 1}-${pi + 1}`;
-    });
-  });
-
-  // Step 4: assign slot-role to remaining assets that don't have one yet.
-  // Highest trust first: canonical logo → container regex → parent landmark.
-  for (const a of catalog) {
-    if (a.slotRole) continue; // already set by cluster detection
-    if (a.isCanonicalLogo) {
-      a.slotRole = "header-logo";
-      continue;
-    }
-    if (a.containerHasLogoRegex && (a.parentLandmark === "header" || a.parentLandmark === "nav")) {
-      a.slotRole = "header-logo";
-      continue;
-    }
-    if (a.parentLandmark) {
-      // header / nav / main / footer / aside → "header" | "nav" | "hero" | "footer" | "aside"
-      a.slotRole = a.parentLandmark === "main" ? "hero" : a.parentLandmark;
-      continue;
-    }
-    a.slotRole = "content";
-  }
+      const loop =
+        metadata.loopCount === 0
+          ? "loops forever"
+          : metadata.loopCount == null
+            ? "no loop metadata"
+            : `loop count ${metadata.loopCount}`;
+      return {
+        ...asset,
+        notes: appendNote(
+          asset.notes,
+          `animated GIF: ${metadata.frameCount} frames, ${metadata.durationSeconds.toFixed(3)}s, ${loop}`,
+        ),
+      };
+    }),
+  );
 }
 
 /**

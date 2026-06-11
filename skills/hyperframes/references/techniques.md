@@ -1,41 +1,34 @@
 # Visual Techniques Reference
 
-20 proven techniques from production HyperFrames videos. Use these in your storyboard and compositions to create visually rich, professional output. Each technique includes a minimal code pattern you can adapt.
+13 primitive animation techniques from production HyperFrames videos — SVG drawing, kinetic typography, variable fonts, WebGL shaders, motion-path, etc. Compose these into beats; they are the building blocks, not finished recipes. Each entry includes a minimal code pattern you can adapt.
 
-These are NOT advanced — they're standard motion design patterns that every composition should use at least 2-3 of.
+These are NOT advanced — they're standard motion design patterns that every composition should use at least 2-3 of. For pre-built UI templates (terminal chrome, device mockups, moodboard layouts), look in the `registry/blocks/` directory instead — those are recipes, not techniques.
 
 **These are starting points, not copy-paste templates.** Every code pattern below is a minimal working example from a real production video. Adapt them to your needs — change colors, sizes, timings, easings, element counts, layout. Combine techniques, mix parts from different patterns, invent variations. The goal is to understand the PRINCIPLE behind each technique so you can build something original, not to reproduce these examples exactly.
 
 ## Table of Contents
 
-**Named text animation effects** (per-character, per-word, per-line, whole-element) with exact GSAP specs are in [`text-effects.md`](text-effects.md) — 24 bundled effects, no install needed. Use those for all headline and label animations instead of inventing timing from scratch.
+**Named text animation effects** (per-character, per-word, per-line, whole-element) — 24 effects with exact GSAP specs come from the separate `pixel-point/animate-text` skill. See [`text-effects.md`](text-effects.md) for the effect-name vocabulary and instructions for loading the upstream skill. Use those for all headline and label animations instead of inventing timing from scratch.
 
 **HTML-in-Canvas patterns** (live DOM as GPU texture: iPhone/MacBook mockups, liquid glass, magnetic, portal, shatter, text cursor — using `drawElementImage` + `layoutsubtree`) are in [`html-in-canvas-patterns.md`](html-in-canvas-patterns.md) — 504 lines, one shared boilerplate + ~6 effect recipes. Use for 1–3 hero beats per video, not every beat.
 
 ---
 
-| #   | Technique                           | What it does                                                               | Best for                                         |
-| --- | ----------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
-| 1   | **SVG Path Drawing**                | Logos/icons draw themselves stroke by stroke                               | Logo reveals, diagram builds, connector lines    |
-| 2   | **Canvas 2D Procedural Art**        | Animated noise, particles, data viz — frame-by-frame via GSAP proxy        | Generative backgrounds, ambient texture          |
-| 3   | **CSS 3D Transforms**               | Card flips, perspective grids, folding panels                              | Product reveals, comparison scenes               |
-| 4   | **Per-Word Kinetic Typography**     | Text animates word-by-word with stagger timing                             | Thesis statements, key messages, quotes          |
-| 5   | **Lottie Animation**                | Captured or external Lottie plays as overlay/background                    | Brand animations, micro-interactions             |
-| 6   | **Video Compositing**               | Product videos play inline, masked, overlaid                               | Demo footage, screen recordings                  |
-| 7   | **Character-by-Character Typing**   | Terminal-style code reveals, search bar interactions                       | Developer tools, CLI demos                       |
-| 8   | **Variable Font Axis Animation**    | Weight, width, slant, optical size morph over time                         | Premium typography, brand wordmarks              |
-| 9   | **GSAP MotionPathPlugin**           | Elements follow SVG curves, orbital motion, spirals                        | Dynamic entrances, connector animations          |
-| 10  | **Velocity-Matched Transitions**    | Outgoing blur/translate matches incoming for seamless cuts                 | Beat transitions, scene changes                  |
-| 11  | **Audio-Reactive Animation**        | Elements pulse to narration frequency bands                                | Background textures, text glow, ambient motion   |
-| 12  | **Frosted Glass Panels**            | `backdrop-filter: blur` + translucent backgrounds + inset glow             | Premium UI cards, feature overlays, modals       |
-| 13  | **Clip-Path Reveal Masks**          | Fixed window that content slides through (text/images enter from one side) | Headline intros, image reveals, wipe effects     |
-| 14  | **WebGL Fragment Shader Art**       | Full GPU generative backgrounds — FBM domain warp, cosine palettes         | Hero backgrounds, atmospheric scenes             |
-| 15  | **Impact Line on Text Drop**        | Horizontal line expands at text landing point — physical weight feel       | Title cards, stat reveals, single-word emphasis  |
-| 16  | **Device Mockups (Laptop + Phone)** | CSS-only MacBook/iPhone with realistic chrome, scrolling content           | Product showcases, website demos, app reveals    |
-| 17  | **Aurora Gradient Backgrounds**     | Multi-blob radial gradients that drift — depth without Canvas/WebGL        | Dark cinematic scenes, CTA backgrounds           |
-| 18  | **Floating Particles**              | CSS particles with glow shadows, staggered float                           | Ambient texture, premium atmosphere              |
-| 19  | **Terminal UI with Typing**         | macOS chrome + typed commands + scaffold output lines                      | Developer CTAs, CLI demos, product onboarding    |
-| 20  | **Moodboard / Editorial Layout**    | Paper texture, decorative rules, pinned cards at angles, connecting lines  | Brand reels, design showcases, editorial content |
+| #   | Technique                         | What it does                                                               | Best for                                       |
+| --- | --------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1   | **SVG Path Drawing**              | Logos/icons draw themselves stroke by stroke                               | Logo reveals, diagram builds, connector lines  |
+| 2   | **Canvas 2D Procedural Art**      | Animated noise, particles, data viz — frame-by-frame via GSAP proxy        | Generative backgrounds, ambient texture        |
+| 3   | **CSS 3D Transforms**             | Card flips, perspective grids, folding panels                              | Product reveals, comparison scenes             |
+| 4   | **Per-Word Kinetic Typography**   | Text animates word-by-word with stagger timing                             | Thesis statements, key messages, quotes        |
+| 5   | **Lottie Animation**              | Captured or external Lottie plays as overlay/background                    | Brand animations, micro-interactions           |
+| 6   | **Video Compositing**             | Product videos play inline, masked, overlaid                               | Demo footage, screen recordings                |
+| 7   | **Character-by-Character Typing** | Terminal-style code reveals, search bar interactions                       | Developer tools, CLI demos                     |
+| 8   | **Variable Font Axis Animation**  | Weight, width, slant, optical size morph over time                         | Premium typography, brand wordmarks            |
+| 9   | **GSAP MotionPathPlugin**         | Elements follow SVG curves, orbital motion, spirals                        | Dynamic entrances, connector animations        |
+| 10  | **Velocity-Matched Transitions**  | Outgoing blur/translate matches incoming for seamless cuts                 | Beat transitions, scene changes                |
+| 11  | **Audio-Reactive Animation**      | Elements pulse to narration frequency bands                                | Background textures, text glow, ambient motion |
+| 12  | **Clip-Path Reveal Masks**        | Fixed window that content slides through (text/images enter from one side) | Headline intros, image reveals, wipe effects   |
+| 13  | **WebGL Fragment Shader Art**     | Full GPU generative backgrounds — FBM domain warp, cosine palettes         | Hero backgrounds, atmospheric scenes           |
 
 ---
 
@@ -154,8 +147,8 @@ Words appear one-by-one, synced to transcript.json timestamps. The core techniqu
 <style>
   .word {
     display: inline-block;
+    opacity: 0;
     margin: 0 0.12em;
-    /* No CSS opacity:0 here — initial state is set by GSAP via fromTo. */
   }
 </style>
 <script>
@@ -164,10 +157,15 @@ Words appear one-by-one, synced to transcript.json timestamps. The core techniqu
   var slides = [80, 60, 50, 25, 12]; // horizontal slide decay (px)
 
   document.querySelectorAll(".word").forEach(function (word, i) {
-    tl.fromTo(
+    tl.from(
       word,
-      { x: slides[i], y: 14, opacity: 0 },
-      { x: 0, y: 0, opacity: 1, duration: 0.35, ease: "power2.out" },
+      {
+        x: slides[i],
+        y: 14,
+        opacity: 0,
+        duration: 0.35,
+        ease: "power2.out",
+      },
       timings[i],
     );
   });
@@ -176,42 +174,30 @@ Words appear one-by-one, synced to transcript.json timestamps. The core techniqu
 
 The slide distance DECAYS per word (80→12px) — mimics a camera settling.
 
-**Why `fromTo`, not `from`:** If `.word` carried CSS `opacity: 0` and the timeline used `tl.from(word, { opacity: 0 })`, the start AND end would both be `0` (`from` reads the current rendered state as the END), producing invisible words under seek-based rendering. Always pair explicit start state + explicit end state for safety.
-
 ---
 
 ## 5. Lottie Animation
 
 Vector animations that play inside a composition. Use for logos, character animations, icons.
 
-> **Asset paths in compositions are root-relative** (`capture/assets/…`), not file-relative (`../capture/…`). See [website-to-hyperframes/references/step-5-build.md](../../website-to-hyperframes/references/step-5-build.md) "ASSET PATHS" for the full rule. The Studio preview server rewrites base URLs to the project root — `../` paths that seem to work locally will 404 in preview and in renders.
-
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-wc/dist/dotlottie-wc.js" type="module"></script>
-<dotlottie-wc
-  class="lottie"
-  src="capture/assets/lottie/animation-0.json"
-  autoplay
-  loop
-  speed="1.5"
-  style="width:500px;height:500px;opacity:0"
->
-</dotlottie-wc>
+<div id="anim" class="lottie"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
 <script>
-  tl.fromTo(".lottie", { scale: 0.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(1.6)" }, 0.2);
+  window.__hfLottie = window.__hfLottie || [];
+
+  const anim = lottie.loadAnimation({
+    container: document.getElementById("anim"),
+    renderer: "svg",
+    loop: false,
+    autoplay: false,
+    path: "capture/assets/lottie/animation-0.json",
+  });
+  window.__hfLottie.push(anim);
+
+  gsap.set("#anim", { scale: 0.3, opacity: 0 });
+  tl.to("#anim", { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(1.6)" }, 0.2);
 </script>
-```
-
-Or use lottie-web for more control:
-
-```javascript
-var anim = lottie.loadAnimation({
-  container: document.getElementById("anim"),
-  renderer: "svg",
-  loop: false,
-  autoplay: false,
-  path: "capture/assets/lottie/animation-0.json",
-});
 ```
 
 ---
@@ -407,41 +393,7 @@ Keep text/logo intensity subtle (≤5% scale, ≤30% glow) — audio-reactive mo
 
 ---
 
-## 12. Frosted Glass Panels
-
-macOS-style translucent panels with blur and depth. Premium UI treatment for cards, overlays, and modals.
-
-```html
-<div class="glass-card">
-  <h2>Feature</h2>
-  <p>Description text</p>
-</div>
-<style>
-  .glass-card {
-    background: linear-gradient(
-      160deg,
-      rgba(255, 255, 255, 0.075) 0%,
-      rgba(255, 255, 255, 0.025) 45%,
-      rgba(255, 255, 255, 0.01) 70%,
-      rgba(255, 255, 255, 0.055) 100%
-    );
-    backdrop-filter: blur(14px) saturate(1.12);
-    -webkit-backdrop-filter: blur(14px) saturate(1.12);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 24px;
-    box-shadow:
-      0 30px 90px rgba(0, 0, 0, 0.42),
-      inset 0 1px 0 rgba(255, 255, 255, 0.22);
-    padding: 40px;
-  }
-</style>
-```
-
-The gradient background provides subtle directional light. The inset shadow adds a top edge highlight. Works on both dark and light backgrounds — adjust rgba values accordingly.
-
----
-
-## 13. Clip-Path Reveal Masks
+## 12. Clip-Path Reveal Masks
 
 A fixed window that content slides through — text or images enter from one side and are clipped by an invisible boundary. Different from SVG path drawing: the mask is static, the content moves.
 
@@ -474,7 +426,7 @@ Variations: `clip-path: circle(0% at 50% 50%)` → `circle(100%)` for iris revea
 
 ---
 
-## 14. WebGL Fragment Shader Art
+## 13. WebGL Fragment Shader Art
 
 Full GPU generative backgrounds — domain-warped FBM noise, cosine palette coloring, iridescent organic patterns. Far richer than Canvas 2D.
 
@@ -545,320 +497,6 @@ Always include a Canvas 2D gradient fallback for environments without WebGL.
 
 ---
 
-## 15. Impact Line on Text Drop
-
-Text drops in with overshoot bounce. At the moment of impact, a thin horizontal line expands outward from the baseline — sells the physical weight of the landing.
-
-```html
-<div class="drop-text">hyperframes</div>
-<div class="drop-line"></div>
-<style>
-  .drop-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    font-size: 180px;
-    font-weight: 900;
-  }
-  .drop-line {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 300px;
-    height: 3px;
-    background: rgba(255, 255, 255, 0.25);
-    border-radius: 2px;
-  }
-</style>
-<script>
-  gsap.set(".drop-text", { xPercent: -50, yPercent: -50, y: -300, opacity: 0 });
-  gsap.set(".drop-line", { xPercent: -50, yPercent: -50, y: 80, scaleX: 0 });
-
-  tl.to(".drop-text", { y: 0, opacity: 1, duration: 0.25, ease: "back.out(1.2)" }, 0);
-  tl.to(".drop-line", { scaleX: 1, duration: 0.12, ease: "power3.out" }, 0.15);
-  tl.to(".drop-line", { opacity: 0, scaleX: 1.3, duration: 0.1, ease: "power2.out" }, 0.27);
-</script>
-```
-
-The line appears slightly after the text lands (0.15s offset). It expands, then fades while growing wider — simulating dissipating energy.
-
----
-
-## 16. Device Mockups (Laptop + Phone)
-
-CSS-only laptop and phone frames with realistic chrome, shadows, and perspective. Content scrolls inside the screen.
-
-```html
-<!-- MacBook mockup -->
-<div class="lap-wrap">
-  <div class="lap-screen-outer">
-    <div class="lap-notch"></div>
-    <div class="lap-screen">
-      <img class="site-img" src="capture/screenshots/scroll-000.png" alt="" />
-    </div>
-  </div>
-  <div class="lap-hinge"></div>
-  <div class="lap-base"></div>
-  <div class="lap-shadow"></div>
-</div>
-<style>
-  .lap-screen-outer {
-    width: 1000px;
-    height: 625px;
-    background: #1a1a1c;
-    border-radius: 18px;
-    padding: 14px 14px 24px;
-    box-shadow:
-      0 2px 0 rgba(255, 255, 255, 0.04) inset,
-      0 30px 60px rgba(11, 11, 15, 0.28);
-  }
-  .lap-notch {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 140px;
-    height: 18px;
-    background: #1a1a1c;
-    border-radius: 0 0 10px 10px;
-  }
-  .lap-screen {
-    width: 100%;
-    height: 100%;
-    background: #0b0b0f;
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .lap-hinge {
-    width: 105%;
-    height: 5px;
-    background: linear-gradient(to bottom, #5a5d62, #2a2d32);
-    margin-left: -2.5%;
-  }
-  .lap-base {
-    width: 110%;
-    height: 22px;
-    background: linear-gradient(to bottom, #c8ccd4, #8a8d94);
-    border-radius: 0 0 12px 12px;
-    margin-left: -5%;
-    clip-path: polygon(3% 0, 97% 0, 100% 100%, 0 100%);
-  }
-  .lap-shadow {
-    position: absolute;
-    bottom: -28px;
-    left: 4%;
-    right: 4%;
-    height: 32px;
-    background: radial-gradient(ellipse, rgba(0, 0, 0, 0.25), transparent 70%);
-    filter: blur(6px);
-  }
-</style>
-```
-
-Animate the content scrolling inside the screen with `tl.to(".site-img", { y: -SCROLL_DISTANCE, duration: 5, ease: "power1.inOut" })`. Add inspector callout annotations that appear at each scroll stop.
-
-For **phone mockups**: same structure but with dynamic island, status bar, home indicator, and 3D perspective via `transform: perspective(2200px) rotateY(-12deg)`.
-
----
-
-## 17. Aurora Gradient Backgrounds
-
-Multi-blob radial gradients that drift slowly — creates depth and atmosphere without Canvas/WebGL complexity.
-
-```html
-<div class="bg-aurora"></div>
-<style>
-  .bg-aurora {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(900px 500px at 22% 38%, rgba(83, 58, 253, 0.28), transparent 65%),
-      radial-gradient(1100px 700px at 78% 42%, rgba(0, 195, 255, 0.22), transparent 60%),
-      radial-gradient(700px 500px at 50% 80%, rgba(62, 207, 142, 0.18), transparent 65%),
-      radial-gradient(600px 400px at 80% 15%, rgba(244, 75, 204, 0.15), transparent 65%);
-    filter: blur(2px);
-  }
-</style>
-<script>
-  gsap.set(".bg-aurora", { opacity: 0 });
-  tl.to(".bg-aurora", { opacity: 1, duration: 2, ease: "power2.inOut" }, 0.5);
-  // Slow drift via background-position or x/y
-  tl.to(".bg-aurora", { x: 30, y: -20, duration: 8, ease: "sine.inOut" }, 0);
-</script>
-```
-
-Derive colors from DESIGN.md's brand palette. 4-5 blobs at different positions create natural color mixing. Use brand accent as one blob, complementary tones for the rest.
-
----
-
-## 18. Floating Particles
-
-CSS-only particles with absolute positioning, glow shadows, and staggered float animation. Adds premium ambient texture.
-
-```html
-<div class="particles">
-  <div class="pt p1"></div>
-  <div class="pt p2"></div>
-  <div class="pt p3"></div>
-  <!-- ... up to 12 particles -->
-</div>
-<style>
-  .pt {
-    position: absolute;
-    width: 3px;
-    height: 3px;
-    background: #f7f8f8;
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
-    opacity: 0;
-  }
-  /* Position each particle individually */
-  .p1 {
-    left: 15%;
-    top: 20%;
-  }
-  .p2 {
-    left: 78%;
-    top: 35%;
-    width: 4px;
-    height: 4px;
-  }
-  /* ... */
-</style>
-<script>
-  var pts = root.querySelectorAll(".pt");
-  // Seeded pseudo-random for determinism
-  function mulberry32(a) {
-    return function () {
-      a |= 0;
-      a = (a + 0x6d2b79f5) | 0;
-      var t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-  var rng = mulberry32(42);
-
-  pts.forEach(function (pt, i) {
-    var delay = 0.5 + i * 0.15;
-    tl.to(pt, { opacity: 0.6 + rng() * 0.4, duration: 0.8, ease: "power2.out" }, delay);
-    tl.to(pt, { y: -20 - rng() * 40, duration: 4 + rng() * 3, ease: "sine.inOut" }, delay);
-  });
-</script>
-```
-
----
-
-## 19. Terminal UI with Typing
-
-macOS-style terminal chrome (traffic light dots) with typed commands, scaffold output lines, and cursor blink. Use for developer-focused videos, CTA sections, and product demos.
-
-```html
-<div class="terminal">
-  <div class="term-chrome">
-    <span class="dot" style="background:#ff5f57"></span>
-    <span class="dot" style="background:#febc2e"></span>
-    <span class="dot" style="background:#28c840"></span>
-    <span class="term-title">Terminal — zsh</span>
-  </div>
-  <div class="term-body">
-    <div class="term-line">
-      <span class="prompt">&#10095;</span>
-      <span class="typed" id="typed-cmd"></span>
-      <span class="cursor">|</span>
-    </div>
-    <div class="scaffold" id="scaffold">
-      <div class="scaffold-line" id="sl-1">Creating project...</div>
-      <div class="scaffold-line" id="sl-2">index.html</div>
-      <div class="scaffold-line" id="sl-3">meta.json</div>
-      <div class="scaffold-line" id="sl-4"><span style="color:#28c840">&#10003;</span> Done</div>
-    </div>
-  </div>
-</div>
-<script>
-  var cmd = "npx hyperframes init my-video";
-  var typed = root.querySelector("#typed-cmd");
-
-  // Type command character by character
-  for (var i = 0; i < cmd.length; i++) {
-    tl.call(
-      function (idx) {
-        typed.textContent = cmd.slice(0, idx + 1);
-      }.bind(null, i),
-      [],
-      0.3 + i * 0.04,
-    );
-  }
-
-  // Scaffold lines appear sequentially
-  var lines = root.querySelectorAll(".scaffold-line");
-  gsap.set(lines, { opacity: 0, y: 4 });
-  lines.forEach(function (line, i) {
-    tl.to(line, { opacity: 1, y: 0, duration: 0.15, ease: "power2.out" }, 1.0 + i * 0.2);
-  });
-</script>
-```
-
----
-
-## 20. Moodboard / Editorial Layout
-
-Print-inspired compositions with paper texture, decorative rules, pinned cards at angles, and connecting gold lines. Works for brand reels and design-forward content.
-
-```html
-<div class="board">
-  <div class="grain"></div>
-  <div class="crown">
-    <div class="crown-line"></div>
-    <span class="crown-text">BRAND NAME</span>
-    <div class="crown-line"></div>
-  </div>
-  <div class="pin-card card-1">
-    <img src="capture/assets/hero.png" />
-    <div class="pin-label">Hero Section</div>
-  </div>
-  <!-- more cards at organic angles -->
-</div>
-<style>
-  .grain {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 50;
-    opacity: 0.22;
-    background-image:
-      radial-gradient(rgba(20, 24, 31, 0.1) 1px, transparent 1.2px),
-      radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.2px);
-    background-size:
-      3px 3px,
-      5px 5px;
-    mix-blend-mode: multiply;
-  }
-  .crown {
-    display: flex;
-    align-items: center;
-    gap: 28px;
-  }
-  .crown-line {
-    height: 1px;
-    background: currentColor;
-    width: 480px;
-  }
-  .pin-card {
-    position: absolute;
-    background: #fbf8f1;
-    padding: 12px;
-    border-radius: 4px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    transform: rotate(-3deg); /* organic angle */
-  }
-</style>
-```
-
-Pin cards at slightly random angles (±2-5deg). Connect related cards with thin gold SVG lines that draw in. Use paper-like warm backgrounds (#f1ece2, #fbf8f1).
-
----
-
 ## Easing Vocabulary
 
 GSAP offers a deep easing library. Every composition should use at least 3 different easings — using `power2.out` for everything produces flat, monotonous motion. Think of easings as tone of voice: a video that only whispers is boring; one that varies between whisper, normal, and punch is engaging.
@@ -885,38 +523,3 @@ GSAP offers a deep easing library. Every composition should use at least 3 diffe
 Don't match techniques to video type on autopilot — match them to the **concept of the specific beat**. Ask: what visual treatment makes this exact idea land? A beat about speed needs motion that communicates speed; a beat about precision needs geometry and structure; a beat about warmth needs texture and organic drift.
 
 Read the storyboard beat's concept and mood, then scan this list for techniques whose _visual character_ serves that concept. Any technique can appear in any video type — the question is whether it earns its place in this beat.
-
----
-
-## Transitions — known artifacts
-
-These are not bugs to fix — they're characteristics of the engine to design around. Each one cost at least one full render cycle to discover.
-
-### CSS crossfade scales the outgoing scene ≈1.5×
-
-The HyperShader "no shader" crossfade (`{ time: T, duration: D }` without a `shader` field — see [transitions.md](./transitions.md)) is not a pure opacity dissolve. The outgoing scene is scaled to ≈1.5× during the fade. Full-frame headlines balloon past the frame edges at the midpoint (~70% through the transition). Catchable only at transition mid-render, not at rest.
-
-```html
-<!-- BAD: headline fills full width, gets clipped at the crossfade midpoint -->
-<h1 style="font-size:140px">SCALING PAST THE FRAME</h1>
-```
-
-```html
-<!-- GOOD: headline survives the 1.5× scale because it occupies <70% width -->
-<h1 style="font-size:140px;max-width:70%;margin:0 auto;text-align:center">
-  SHORTER LINE
-</h1>
-```
-
-There is no flag to disable the scale — it's intrinsic to the engine's crossfade. Either keep transition-boundary text under 70% frame width, or use an explicit shader (`sdf-iris`, `domain-warp`, etc.).
-
-### `flash-through-white` reads near-black between two dark scenes
-
-Luminance-dependent. With no bright pixels in either scene, the shader produces a dark concentric ripple, not a white flash. Drop the shader; compose a full-frame white overlay div animated `opacity: 1 → 0` over ~0.5s INSIDE the incoming beat, and make the index transition a plain 0.2s crossfade:
-
-```html
-<div class="flash" style="position:absolute;inset:0;background:#fff;z-index:99;opacity:1;pointer-events:none"></div>
-<script>tl.to(".flash", { opacity: 0, duration: 0.5, ease: "power2.out" }, 0);</script>
-```
-
-This pattern gives reliable, controllable flashes regardless of scene luminance.

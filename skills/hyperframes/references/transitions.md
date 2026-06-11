@@ -43,7 +43,7 @@ Use this table to derive what **quality** the transition should have, then look 
 
 ## Narrative Position
 
-Each position in the video has a different job to do. What transition you pick for each should come from the brand's motion character (derived from visual-vocabulary.md) and the storyboard's intent — not from a rule about "climax = boldest."
+Each position in the video has a different job to do. What transition you pick for each should come from the brand's motion character and the storyboard's intent — not from a rule about "climax = boldest."
 
 - **Opening** — establishes the motion language for the entire video. Make a deliberate choice; whatever you pick here sets the viewer's expectation for everything that follows.
 - **Between related points** — should be almost invisible. The content is continuing; the transition shouldn't draw attention to itself. Consistency matters more than distinctiveness here.
@@ -103,7 +103,7 @@ CSS transitions animate scene containers with opacity, transforms, clip-path, an
 
 **Both are first-class options.** Shaders are provided by the `@hyperframes/shader-transitions` package — import from the package instead of writing raw GLSL. CSS transitions are simpler to set up. Choose based on the effect you want, not based on which is easier.
 
-**Mixing is supported.** You can have some transitions use WebGL shaders and others use a CSS crossfade in the same composition. Omit the `shader` field on any `TransitionConfig` entry to get an opacity crossfade instead of a WebGL effect:
+**Mixing is supported.** You can have some transitions use WebGL shaders and others use a CSS crossfade in the same composition. Omit the `shader` field on any `TransitionConfig` entry to get a smooth opacity crossfade instead of a WebGL effect:
 
 ```js
 var tl = HyperShader.init({
@@ -117,8 +117,6 @@ var tl = HyperShader.init({
   ],
 });
 ```
-
-⚠ **The CSS crossfade is not a pure opacity dissolve.** The outgoing scene is scaled to ≈1.5× during the fade (catchable only at the transition midpoint mid-render, not at rest). Full-frame headlines wider than ~70% of the frame will balloon past the edges at the midpoint. Keep headline text on transition boundaries to `max-width: 70%`, or shorten the line. The scale is intrinsic to the engine's crossfade — there is no flag to disable it. See [techniques.md → Transitions — known artifacts](./techniques.md#transitions--known-artifacts).
 
 HyperShader manages all scene visibility regardless of transition type. Let it create the timeline (don't pass `timeline:` into `init()`) and add your beat animations to the returned `tl` after the call.
 

@@ -1,5 +1,6 @@
 import { memo, type ReactNode } from "react";
 import { TimelineClip } from "./TimelineClip";
+import { TimelineClipDiamonds } from "./TimelineClipDiamonds";
 import { TimelineRuler } from "./TimelineRuler";
 import {
   getTimelineEditCapabilities,
@@ -8,10 +9,32 @@ import {
 } from "./timelineEditing";
 import { getRenderedTimelineElement, type TimelineTheme } from "./timelineTheme";
 import { GUTTER, TRACK_H, RULER_H, CLIP_Y, CLIP_HANDLE_W } from "./timelineLayout";
-import type { TimelineElement } from "../store/playerStore";
+import {
+  usePlayerStore,
+  type TimelineElement,
+  type KeyframeCacheEntry,
+} from "../store/playerStore";
 import type { DraggedClipState, ResizingClipState, BlockedClipState } from "./useTimelineClipDrag";
-import { formatTime } from "../lib/time";
 import type { TrackVisualStyle } from "./timelineIcons";
+import { STUDIO_KEYFRAMES_ENABLED } from "../../components/editor/manualEditingAvailability";
+
+function ClipLabel({ element, color }: { element: TimelineElement; color: string }) {
+  const lint = usePlayerStore((s) => s.lintFindingsByElement.get(element.key ?? element.id));
+  return (
+    <span
+      className="flex items-center gap-1 truncate text-[10px] font-medium leading-none"
+      style={{ color }}
+    >
+      {element.label || element.id || element.tag}
+      {lint && lint.count > 0 && (
+        <span
+          className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400"
+          title={lint.messages.join("\n")}
+        />
+      )}
+    </span>
+  );
+}
 
 interface TimelineCanvasProps {
   major: number[];
@@ -59,6 +82,15 @@ interface TimelineCanvasProps {
   } | null>;
   getPreviewElement: (element: TimelineElement) => TimelineElement;
   getTrackStyle: (tag: string) => TrackVisualStyle;
+  keyframeCache?: Map<string, KeyframeCacheEntry>;
+  selectedKeyframes: Set<string>;
+  currentTime: number;
+  onClickKeyframe?: (element: TimelineElement, percentage: number) => void;
+  onShiftClickKeyframe?: (elementId: string, percentage: number) => void;
+  onDragKeyframe?: (element: TimelineElement, oldPct: number, newPct: number) => void;
+  onContextMenuKeyframe?: (e: React.MouseEvent, elementId: string, percentage: number) => void;
+  onContextMenuClip?: (e: React.MouseEvent, element: TimelineElement) => void;
+  onToggleKeyframeAtPlayhead?: (element: TimelineElement) => void;
 }
 
 export const TimelineCanvas = memo(function TimelineCanvas({
@@ -100,6 +132,15 @@ export const TimelineCanvas = memo(function TimelineCanvas({
   shiftClickClipRef,
   getPreviewElement,
   getTrackStyle,
+  keyframeCache,
+  selectedKeyframes,
+  currentTime,
+  onClickKeyframe,
+  onShiftClickKeyframe,
+  onDragKeyframe,
+  onContextMenuKeyframe,
+  onContextMenuClip,
+  onToggleKeyframeAtPlayhead: _onToggleKeyframeAtPlayhead,
 }: TimelineCanvasProps) {
   const draggedElement = draggedClip?.element ?? null;
   const activeDraggedElement =
@@ -134,28 +175,11 @@ export const TimelineCanvas = memo(function TimelineCanvas({
         className={
           renderClipContent
             ? "absolute inset-0 overflow-hidden"
-            : "flex flex-col justify-center overflow-hidden flex-1 min-w-0 px-6"
+            : "flex items-center overflow-hidden flex-1 min-w-0 px-3 gap-2"
         }
       >
         {renderClipContent?.(element, clipStyle) ?? (
-          <div className="flex h-full min-h-0 flex-col justify-between py-3">
-            <span
-              className="max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] leading-none"
-              style={{
-                color: clipStyle.label,
-                background: `${clipStyle.accent}26`,
-                boxShadow: `inset 0 0 0 1px ${clipStyle.accent}33`,
-              }}
-            >
-              {element.tag}
-            </span>
-            <span
-              className="max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums leading-none"
-              style={{ color: theme.textSecondary, background: "rgba(255,255,255,0.04)" }}
-            >
-              {formatTime(element.start)} {"→"} {formatTime(element.start + element.duration)}
-            </span>
-          </div>
+          <ClipLabel element={element} color={clipStyle.label} />
         )}
       </div>
     </>
@@ -221,10 +245,9 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                     paddingLeft: 16,
                     color: ts.label,
                     fontSize: 11,
-                    letterSpacing: "0.08em",
+                    letterSpacing: "0.06em",
                     textTransform: "uppercase",
-                    background: `linear-gradient(90deg, ${ts.accent}14, transparent 28%)`,
-                    boxShadow: `inset 0 0 0 1px ${ts.accent}24`,
+                    opacity: 0.5,
                   }}
                 >
                   New track
@@ -245,6 +268,10 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                 return (
                   <TimelineClip
                     key={clipKey}
+                    onContextMenu={(e: React.MouseEvent) => {
+                      e.preventDefault();
+                      onContextMenuClip?.(e, el);
+                    }}
                     el={previewElement}
                     pps={pps}
                     clipY={CLIP_Y}
@@ -342,6 +369,28 @@ export const TimelineCanvas = memo(function TimelineCanvas({
                     }}
                   >
                     {renderClipChildren(previewElement, clipStyle)}
+                    {STUDIO_KEYFRAMES_ENABLED && keyframeCache?.get(elementKey) && (
+                      <TimelineClipDiamonds
+                        keyframesData={keyframeCache.get(elementKey)!}
+                        clipWidthPx={Math.max(previewElement.duration * pps, 4)}
+                        clipHeightPx={TRACK_H - 2 * CLIP_Y}
+                        accentColor={clipStyle.accent}
+                        isSelected={isSelected}
+                        currentPercentage={
+                          previewElement.duration > 0
+                            ? ((currentTime - previewElement.start) / previewElement.duration) * 100
+                            : 0
+                        }
+                        elementId={elementKey}
+                        selectedKeyframes={selectedKeyframes}
+                        onClickKeyframe={(pct) => onClickKeyframe?.(previewElement, pct)}
+                        onShiftClickKeyframe={onShiftClickKeyframe}
+                        onDragKeyframe={(oldPct, newPct) =>
+                          onDragKeyframe?.(previewElement, oldPct, newPct)
+                        }
+                        onContextMenuKeyframe={onContextMenuKeyframe}
+                      />
+                    )}
                   </TimelineClip>
                 );
               })}

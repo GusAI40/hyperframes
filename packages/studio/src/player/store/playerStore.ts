@@ -1,6 +1,18 @@
 import { create } from "zustand";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
+/** Minimal keyframe cache types — mirrors GsapKeyframesData without pulling in Node-only gsap-parser. */
+export interface KeyframeCacheEntry {
+  format: string;
+  keyframes: Array<{
+    percentage: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }>;
+  ease?: string;
+  easeEach?: string;
+}
+
 export interface TimelineElement {
   id: string;
   label?: string;
@@ -10,6 +22,8 @@ export interface TimelineElement {
   duration: number;
   track: number;
   domId?: string;
+  /** Stable `data-hf-id` attribute value — used as primary patch target when present */
+  hfId?: string;
   /** Best-effort selector used when patching source HTML back from timeline edits */
   selector?: string;
   /** Zero-based occurrence index for non-unique selectors */
@@ -51,6 +65,32 @@ interface PlayerState {
   /** Work-area out-point (seconds). When set, loop ends here and E jumps here. */
   outPoint: number | null;
 
+  /** Set of selected keyframe keys in format `${elementId}:${percentage}`. */
+  selectedKeyframes: Set<string>;
+  toggleSelectedKeyframe: (key: string) => void;
+  clearSelectedKeyframes: () => void;
+
+  /** Multi-select: additional selected elements beyond selectedElementId. */
+  selectedElementIds: Set<string>;
+  toggleSelectedElementId: (id: string) => void;
+  clearSelectedElementIds: () => void;
+
+  /** Clipboard for keyframe copy/paste — stores keyframes with relative times. */
+  keyframeClipboard: Array<{
+    relativeTime: number;
+    properties: Record<string, number | string>;
+    ease?: string;
+  }> | null;
+  setKeyframeClipboard: (data: PlayerState["keyframeClipboard"]) => void;
+
+  /** Elements with expanded property rows in the timeline. */
+  expandedTimelineElements: Set<string>;
+  toggleExpandedElement: (id: string) => void;
+
+  /** Keyframe data per element id, populated from parsed GSAP animations. */
+  keyframeCache: Map<string, KeyframeCacheEntry>;
+  setKeyframeCache: (elementId: string, data: KeyframeCacheEntry | undefined) => void;
+
   setIsPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
@@ -77,6 +117,12 @@ interface PlayerState {
   requestedSeekTime: number | null;
   requestSeek: (time: number) => void;
   clearSeekRequest: () => void;
+
+  autoKeyframeEnabled: boolean;
+  setAutoKeyframeEnabled: (enabled: boolean) => void;
+
+  lintFindingsByElement: Map<string, { count: number; messages: string[] }>;
+  setLintFindingsByElement: (map: Map<string, { count: number; messages: string[] }>) => void;
 }
 
 // Lightweight pub-sub for current time during playback.
@@ -107,9 +153,56 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   inPoint: null,
   outPoint: null,
 
+  selectedKeyframes: new Set(),
+  toggleSelectedKeyframe: (key) =>
+    set((s) => {
+      const next = new Set(s.selectedKeyframes);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return { selectedKeyframes: next };
+    }),
+  clearSelectedKeyframes: () => set({ selectedKeyframes: new Set() }),
+
+  keyframeClipboard: null,
+  setKeyframeClipboard: (data) => set({ keyframeClipboard: data }),
+
+  selectedElementIds: new Set<string>(),
+  toggleSelectedElementId: (id: string) =>
+    set((s) => {
+      const next = new Set(s.selectedElementIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { selectedElementIds: next };
+    }),
+  clearSelectedElementIds: () => set({ selectedElementIds: new Set() }),
+
+  expandedTimelineElements: new Set<string>(),
+  toggleExpandedElement: (id: string) =>
+    set((s) => {
+      const next = new Set(s.expandedTimelineElements);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { expandedTimelineElements: next };
+    }),
+
+  keyframeCache: new Map(),
+  setKeyframeCache: (elementId, data) =>
+    set((s) => {
+      const next = new Map(s.keyframeCache);
+      if (data) next.set(elementId, data);
+      else next.delete(elementId);
+      return { keyframeCache: next };
+    }),
+
   requestedSeekTime: null,
   requestSeek: (time) => set({ requestedSeekTime: time }),
   clearSeekRequest: () => set({ requestedSeekTime: null }),
+
+  autoKeyframeEnabled: true,
+  setAutoKeyframeEnabled: (enabled) => set({ autoKeyframeEnabled: enabled }),
+
+  lintFindingsByElement: new Map(),
+  setLintFindingsByElement: (map) => set({ lintFindingsByElement: map }),
 
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setPlaybackRate: (rate) => {
@@ -169,5 +262,9 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       selectedElementId: null,
       inPoint: null,
       outPoint: null,
+      selectedKeyframes: new Set(),
+      selectedElementIds: new Set(),
+      expandedTimelineElements: new Set(),
+      keyframeCache: new Map(),
     }),
 }));

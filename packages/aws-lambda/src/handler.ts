@@ -83,6 +83,7 @@ export interface HandlerDeps {
  */
 export async function handler(event: LambdaEvent, deps?: HandlerDeps): Promise<LambdaResult> {
   const unwrapped = unwrapEvent(event);
+  validateEventS3Uris(unwrapped);
   primeRuntimeEnv();
   // Single structured boot log line — CloudWatch Logs Insights queries
   // key off `event=handler_start` to grep for a specific Action / S3 URI
@@ -228,6 +229,16 @@ async function handlePlan(event: PlanEvent, deps?: HandlerDeps): Promise<PlanLam
   const started = Date.now();
   const s3 = deps?.s3 ?? getS3Client();
   const primitive = deps?.primitives?.plan ?? plan;
+
+  // The producer's probe stage launches Chromium whenever the composition
+  // needs a runtime duration probe or has unresolved sub-compositions, so
+  // plan has to resolve Chrome the same way renderChunk does. Without this
+  // the probe throws "An `executablePath` or `channel` must be specified
+  // for `puppeteer-core`" the moment runProbeStage calls puppeteer.launch.
+  if (!deps?.skipChromeResolution && !process.env.PRODUCER_HEADLESS_SHELL_PATH) {
+    const chromePath = await resolveChromeExecutablePath();
+    process.env.PRODUCER_HEADLESS_SHELL_PATH = chromePath;
+  }
 
   const work = mkdtempSync(join(deps?.tmpRoot ?? tmpdir(), "hf-lambda-plan-"));
   // We use `.tar.gz` (not `.zip`) as the project archive's on-the-wire
@@ -407,7 +418,9 @@ async function handleAssemble(
         ? join(work, "output-frames")
         : join(work, `output${formatExtension(event.Format)}`);
 
-    const result: AssembleResult = await primitive(planDir, chunkPaths, audioPath, finalOutput);
+    const result: AssembleResult = await primitive(planDir, chunkPaths, audioPath, finalOutput, {
+      cfr: event.Cfr === true,
+    });
 
     if (event.Format === "png-sequence") {
       const tarball = `${finalOutput}.tar.gz`;
@@ -464,6 +477,44 @@ async function downloadChunkObjects(
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Collect every S3 URI that the handler will touch for a given event. */
+function getEventS3Uris(event: PlanEvent | RenderChunkEvent | AssembleEvent): string[] {
+  switch (event.Action) {
+    case "plan":
+      return [event.ProjectS3Uri, event.PlanOutputS3Prefix];
+    case "renderChunk":
+      return [event.PlanS3Uri, event.ChunkOutputS3Prefix];
+    case "assemble":
+      return [event.PlanS3Uri, ...event.ChunkS3Uris, event.OutputS3Uri, event.AudioS3Uri].filter(
+        (u): u is string => u != null,
+      );
+  }
+}
+
+/**
+ * Verify every S3 URI in the event resolves to the configured render bucket.
+ * Throws `S3_URI_NOT_ALLOWED` (non-retryable) when a URI targets a different
+ * bucket, preventing event injection from reading or writing arbitrary S3 data.
+ *
+ * Skipped when `HYPERFRAMES_RENDER_BUCKET` is unset so existing deployments
+ * without the env var continue to work.
+ */
+function validateEventS3Uris(event: PlanEvent | RenderChunkEvent | AssembleEvent): void {
+  const allowedBucket = process.env.HYPERFRAMES_RENDER_BUCKET?.trim();
+  if (!allowedBucket) return;
+
+  for (const uri of getEventS3Uris(event)) {
+    const { bucket } = parseS3Uri(uri);
+    if (bucket !== allowedBucket) {
+      const err = new Error(
+        `[handler] S3_URI_NOT_ALLOWED: URI ${JSON.stringify(uri)} targets bucket "${bucket}" but only "${allowedBucket}" is permitted`,
+      );
+      err.name = "S3_URI_NOT_ALLOWED";
+      throw err;
+    }
+  }
+}
 
 function pad(n: number): string {
   return n.toString().padStart(4, "0");

@@ -9,6 +9,8 @@ import { spawn } from "child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "fs";
 import { isAbsolute, join, posix, resolve, sep } from "path";
 import { parseHTML } from "linkedom";
+import { decodeUrlPathVariants } from "@hyperframes/core";
+import { trackChildProcess } from "../utils/processTracker.js";
 import { extractMediaMetadata, type VideoMetadata } from "../utils/ffprobe.js";
 import {
   analyzeCompositionHdr,
@@ -258,6 +260,7 @@ export async function extractVideoFramesRange(
 
   return new Promise((resolve, reject) => {
     const ffmpeg = spawn("ffmpeg", args);
+    trackChildProcess(ffmpeg);
     let stderr = "";
     const onAbort = () => {
       ffmpeg.kill("SIGTERM");
@@ -514,30 +517,39 @@ export function resolveProjectRelativeSrc(
 ): string {
   const qIdx = src.indexOf("?");
   const cleanSrc = qIdx >= 0 ? src.slice(0, qIdx) : src;
-  const fromCompiled = compiledDir ? join(compiledDir, cleanSrc) : null;
-  const fromBase = join(baseDir, cleanSrc);
   const candidates: string[] = [];
-  if (fromCompiled) candidates.push(fromCompiled);
-  candidates.push(fromBase);
-  // If the joined result escapes the project root (either via leading `..`
-  // or mid-path traversal that path.join collapsed past baseDir), retry
-  // with the basename re-anchored at the project root. This mirrors the
-  // browser URL clamp without relying on a particular `..` shape.
-  const baseAbs = resolve(baseDir);
-  const fromBaseAbs = resolve(fromBase);
-  if (!fromBaseAbs.startsWith(baseAbs + sep) && fromBaseAbs !== baseAbs) {
-    // Normalize first (`assets/../../assets/foo.mp4` → `../assets/foo.mp4`)
-    // then strip any remaining leading `..` segments. Stripping `..` from the
-    // raw input would leave dangling siblings (`assets/../../assets/foo`
-    // would become `assets/assets/foo` instead of `assets/foo`).
-    const normalized = posix.normalize(cleanSrc.replace(/\\/g, "/"));
-    const stripped = normalized.replace(/^(\.\.\/)+/, "");
-    if (stripped && stripped !== src && !stripped.startsWith("..")) {
-      if (compiledDir) candidates.push(join(compiledDir, stripped));
-      candidates.push(join(baseDir, stripped));
+
+  const addCandidate = (candidate: string): void => {
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+  };
+
+  for (const variant of decodeUrlPathVariants(cleanSrc)) {
+    const fromCompiled = compiledDir ? join(compiledDir, variant) : null;
+    const fromBase = join(baseDir, variant);
+
+    // If the joined result escapes the project root (either via leading `..`
+    // or mid-path traversal that path.join collapsed past baseDir), retry
+    // with the basename re-anchored at the project root. This mirrors the
+    // browser URL clamp without relying on a particular `..` shape.
+    const baseAbs = resolve(baseDir);
+    const fromBaseAbs = resolve(fromBase);
+    if (!fromBaseAbs.startsWith(baseAbs + sep) && fromBaseAbs !== baseAbs) {
+      // Normalize first (`assets/../../assets/foo.mp4` → `../assets/foo.mp4`)
+      // then strip any remaining leading `..` segments. Stripping `..` from the
+      // raw input would leave dangling siblings (`assets/../../assets/foo`
+      // would become `assets/assets/foo` instead of `assets/foo`).
+      const normalized = posix.normalize(variant.replace(/\\/g, "/"));
+      const stripped = normalized.replace(/^(\.\.\/)+/, "");
+      if (stripped && stripped !== variant && !stripped.startsWith("..")) {
+        if (compiledDir) addCandidate(join(compiledDir, stripped));
+        addCandidate(join(baseDir, stripped));
+      }
     }
+
+    if (fromCompiled) addCandidate(fromCompiled);
+    addCandidate(fromBase);
   }
-  return candidates.find(existsSync) ?? fromBase;
+  return candidates.find(existsSync) ?? join(baseDir, cleanSrc);
 }
 
 export async function extractAllVideoFrames(
@@ -922,7 +934,9 @@ export function getFrameAtTime(
   if (loop && loopDuration > 0 && localTime >= loopDuration) {
     localTime %= loopDuration;
   }
-  const frameIndex = Math.floor(localTime * extracted.fps);
+  // Add epsilon before flooring to avoid IEEE 754 boundary errors where
+  // e.g. 0.28 * 25 === 6.999999999999999 instead of 7.
+  const frameIndex = Math.floor(localTime * extracted.fps + 1e-9);
   if (loop && frameIndex >= extracted.totalFrames && extracted.totalFrames > 0) {
     return extracted.framePaths.get(extracted.totalFrames - 1) || null;
   }
@@ -1032,7 +1046,7 @@ export class FrameLookupTable {
       if (video.loop && loopDuration > 0 && localTime >= loopDuration) {
         localTime %= loopDuration;
       }
-      const frameIndex = Math.floor(localTime * video.extracted.fps);
+      const frameIndex = Math.floor(localTime * video.extracted.fps + 1e-9);
       if (video.loop && frameIndex >= video.extracted.totalFrames) {
         const framePath = video.extracted.framePaths.get(video.extracted.totalFrames - 1);
         if (framePath) {

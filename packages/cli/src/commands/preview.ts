@@ -9,6 +9,10 @@ export const examples: Example[] = [
   ["Force a new server even if one is already running", "hyperframes preview --force-new"],
   ["Start without opening the browser", "hyperframes preview --no-open"],
   ["Open with a specific browser", "hyperframes preview --browser-path /usr/bin/chromium"],
+  [
+    "Open with CDP enabled (requires browser path + isolated profile)",
+    "hyperframes preview --browser-path /usr/bin/chromium --user-data-dir /tmp/hf-profile --remote-debugging-port 9222",
+  ],
   ["List all active preview servers", "hyperframes preview --list"],
   ["Kill all active preview servers", "hyperframes preview --kill-all"],
 ];
@@ -19,7 +23,11 @@ import { createRequire } from "node:module";
 import * as clack from "@clack/prompts";
 import { c } from "../ui/colors.js";
 import { isDevMode } from "../utils/env.js";
-import { openBrowser } from "../utils/openBrowser.js";
+import {
+  openBrowser,
+  parseRemoteDebuggingPort,
+  validateRemoteDebuggingPortDeps,
+} from "../utils/openBrowser.js";
 import { lintProject } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
 import {
@@ -28,6 +36,7 @@ import {
   killActiveServers,
   type FindPortResult,
 } from "../server/portUtils.js";
+import { killOrphanedProcesses, killProcessTree } from "../utils/orphanCleanup.js";
 
 export default defineCommand({
   meta: { name: "preview", description: "Start the studio for previewing compositions" },
@@ -61,6 +70,10 @@ export default defineCommand({
     "user-data-dir": {
       type: "string",
       description: "Chromium-compatible user data directory (requires --browser-path)",
+    },
+    "remote-debugging-port": {
+      type: "string",
+      description: "Chromium remote debugging port (requires --browser-path and --user-data-dir)",
     },
   },
   async run({ args }) {
@@ -96,6 +109,14 @@ export default defineCommand({
       return;
     }
 
+    // Kill orphaned chrome-headless-shell processes from previous crashed sessions.
+    const orphansKilled = killOrphanedProcesses();
+    if (orphansKilled > 0) {
+      console.log(
+        `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
+      );
+    }
+
     const rawArg = args.dir;
     const dir = resolve(rawArg ?? ".");
 
@@ -108,7 +129,7 @@ export default defineCommand({
     const indexPath = join(dir, "index.html");
     if (existsSync(indexPath)) {
       const project = { dir, name: projectName, indexPath };
-      const lintResult = lintProject(project);
+      const lintResult = await lintProject(project);
       if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
         console.log();
         for (const line of formatLintFindings(lintResult)) console.log(line);
@@ -122,18 +143,51 @@ export default defineCommand({
       process.exitCode = 1;
       return;
     }
+    // Validation: --remote-debugging-port deps
+    const depsError = validateRemoteDebuggingPortDeps({
+      browserPath: args["browser-path"] as string | undefined,
+      userDataDir: args["user-data-dir"] as string | undefined,
+      remoteDebuggingPort: args["remote-debugging-port"] as string | undefined,
+    });
+    if (depsError) {
+      clack.log.error(depsError);
+      process.exitCode = 1;
+      return;
+    }
 
     const noOpen = !args.open;
     const browserPath = args["browser-path"] as string | undefined;
     const userDataDir = args["user-data-dir"] as string | undefined;
+    let remoteDebuggingPort: number | undefined;
+    try {
+      remoteDebuggingPort = parseRemoteDebuggingPort(
+        args["remote-debugging-port"] as string | undefined,
+      );
+    } catch (err) {
+      clack.log.error((err as Error).message);
+      process.exitCode = 1;
+      return;
+    }
 
     if (isDevMode()) {
-      return runDevMode(dir, { projectName, noOpen, browserPath, userDataDir });
+      return runDevMode(dir, {
+        projectName,
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+      });
     }
 
     // If @hyperframes/studio is installed locally, use Vite for full HMR
     if (hasLocalStudio(dir)) {
-      return runLocalStudioMode(dir, { projectName, noOpen, browserPath, userDataDir });
+      return runLocalStudioMode(dir, {
+        projectName,
+        noOpen,
+        browserPath,
+        userDataDir,
+        remoteDebuggingPort,
+      });
     }
 
     const forceNew = !!args["force-new"];
@@ -143,6 +197,7 @@ export default defineCommand({
       noOpen,
       browserPath,
       userDataDir,
+      remoteDebuggingPort,
     });
   },
 });
@@ -152,7 +207,13 @@ export default defineCommand({
  */
 async function runDevMode(
   dir: string,
-  options?: { projectName?: string; noOpen?: boolean; browserPath?: string; userDataDir?: string },
+  options?: {
+    projectName?: string;
+    noOpen?: boolean;
+    browserPath?: string;
+    userDataDir?: string;
+    remoteDebuggingPort?: number;
+  },
 ): Promise<void> {
   // Find monorepo root by navigating from packages/cli/src/commands/
   const thisFile = fileURLToPath(import.meta.url);
@@ -222,6 +283,7 @@ async function runDevMode(
         openBrowser(urlToOpen, {
           browserPath: options?.browserPath,
           userDataDir: options?.userDataDir,
+          remoteDebuggingPort: options?.remoteDebuggingPort,
         });
       }
 
@@ -249,8 +311,18 @@ async function runDevMode(
     });
   }
 
-  // Wait for child to exit. Ctrl+C sends SIGINT to the entire process group,
-  // so the child (Vite) receives it directly — no need to intercept or forward.
+  // Kill the child's entire process tree on SIGTERM/SIGINT. Ctrl+C sends
+  // SIGINT to the foreground process group (covers the common case), but
+  // `kill <pid>` only targets this process — the child tree (Vite + Chrome)
+  // would survive without explicit cleanup.
+  // On Windows, killProcessTree is a no-op (pgrep/ps unavailable); Ctrl+C
+  // propagates via the console process group instead.
+  const shutdown = () => {
+    if (child.pid) killProcessTree(child.pid);
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+
   return new Promise<void>((resolve) => {
     child.on("close", () => resolve());
   });
@@ -275,7 +347,13 @@ function hasLocalStudio(dir: string): boolean {
  */
 async function runLocalStudioMode(
   dir: string,
-  options?: { projectName?: string; noOpen?: boolean; browserPath?: string; userDataDir?: string },
+  options?: {
+    projectName?: string;
+    noOpen?: boolean;
+    browserPath?: string;
+    userDataDir?: string;
+    remoteDebuggingPort?: number;
+  },
 ): Promise<void> {
   const req = createRequire(join(dir, "package.json"));
   const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
@@ -327,6 +405,7 @@ async function runLocalStudioMode(
         openBrowser(`${url}#project/${pName}`, {
           browserPath: options?.browserPath,
           userDataDir: options?.userDataDir,
+          remoteDebuggingPort: options?.remoteDebuggingPort,
         });
       }
     }
@@ -349,6 +428,13 @@ async function runLocalStudioMode(
     });
   }
 
+  // Same tree-kill handler as dev mode. No-op on Windows (see comment above).
+  const shutdown = () => {
+    if (child.pid) killProcessTree(child.pid);
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+
   return new Promise<void>((resolve) => {
     child.on("close", () => resolve());
   });
@@ -370,9 +456,11 @@ async function runEmbeddedMode(
     noOpen?: boolean;
     browserPath?: string;
     userDataDir?: string;
+    remoteDebuggingPort?: number;
   },
 ): Promise<void> {
-  const { createStudioServer, resolveStudioBundle } = await import("../server/studioServer.js");
+  const { createStudioServer, loadPreviewServerBuildSignature, resolveStudioBundle } =
+    await import("../server/studioServer.js");
 
   const pName = options?.projectName ?? basename(dir);
   const studioBundle = resolveStudioBundle();
@@ -396,10 +484,17 @@ async function runEmbeddedMode(
   }
 
   const { app } = createStudioServer({ projectDir: dir, projectName: pName });
+  const serverBuildSignature = await loadPreviewServerBuildSignature();
 
   let result: FindPortResult;
   try {
-    result = await findPortAndServe(app.fetch, startPort, dir, !!options?.forceNew);
+    result = await findPortAndServe(
+      app.fetch,
+      startPort,
+      dir,
+      !!options?.forceNew,
+      serverBuildSignature,
+    );
   } catch (err: unknown) {
     s.stop(c.error("Failed to start studio"));
     console.error();
@@ -424,6 +519,7 @@ async function runEmbeddedMode(
       openBrowser(`${url}#project/${pName}`, {
         browserPath: options?.browserPath,
         userDataDir: options?.userDataDir,
+        remoteDebuggingPort: options?.remoteDebuggingPort,
       });
     }
     return;
@@ -448,6 +544,7 @@ async function runEmbeddedMode(
     openBrowser(`${url}#project/${pName}`, {
       browserPath: options?.browserPath,
       userDataDir: options?.userDataDir,
+      remoteDebuggingPort: options?.remoteDebuggingPort,
     });
   }
 
@@ -477,21 +574,42 @@ async function runEmbeddedMode(
       shuttingDown = true;
       process.off("SIGINT", shutdown);
       process.off("SIGTERM", shutdown);
-      // Close the readline interface so a second Ctrl+C during the grace
-      // period below doesn't re-emit SIGINT and trigger Node's default
-      // exit-130 behaviour, contradicting our intent to exit cleanly.
       rl?.close();
-      // `server.close()` can take a second or two to drain keep-alive
-      // connections; surface progress so the terminal doesn't look frozen.
       console.log();
       console.log(`  ${c.dim("Shutting down studio...")}`);
-      result.server.close(() => resolveRun());
-      // If close() hangs on an open connection, force exit after a short
-      // grace period. Exit 0 because user-initiated Ctrl+C isn't an error
-      // — a non-zero code makes pnpm / npm print ELIFECYCLE.
-      setTimeout(() => process.exit(0), 2000).unref();
+
+      // Hard deadline: if cleanup hangs (e.g. dead Chrome never responds to
+      // browser.close()), force exit. Armed before awaiting cleanup so it
+      // can't be blocked by a stuck drainBrowserPool().
+      setTimeout(() => process.exit(0), 3000).unref();
+
+      // Kill ffmpeg first (sync, fast), then drain browsers (async, slower).
+      const cleanup = async () => {
+        const { closeThumbnailBrowser } = await import("../server/studioServer.js");
+        const { drainBrowserPool, killTrackedProcesses } = await import("@hyperframes/engine");
+        killTrackedProcesses();
+        await closeThumbnailBrowser().catch(() => {});
+        await drainBrowserPool().catch(() => {});
+      };
+
+      cleanup()
+        .catch(() => {})
+        .finally(() => {
+          result.server.close(() => resolveRun());
+        });
     };
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
+
+    // Last-resort cleanup for crash paths (unhandled exceptions/rejections)
+    // that bypass the signal handlers. Eagerly resolve the sync killer so
+    // the 'exit' handler (which is synchronous) can call it directly.
+    import("@hyperframes/engine")
+      .then(({ killTrackedProcesses }) => {
+        process.once("exit", () => {
+          if (!shuttingDown) killTrackedProcesses();
+        });
+      })
+      .catch(() => {});
   });
 }

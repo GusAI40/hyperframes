@@ -24,6 +24,11 @@ vi.mock("../telemetry/events.js", () => ({
   trackRenderError: vi.fn(),
 }));
 
+vi.mock("../browser/ffmpeg.js", () => ({
+  findFFmpeg: vi.fn(() => "/usr/bin/ffmpeg"),
+  getFFmpegInstallHint: vi.fn(() => "brew install ffmpeg"),
+}));
+
 describe("renderLocal browser GPU config", () => {
   const savedEnv = new Map<string, string | undefined>();
   // Pre-resolve once. The first dynamic `import("./render.js")` in this file
@@ -164,6 +169,22 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.format).toBe("png-sequence");
   });
 
+  it("forwards format: gif and gifLoop through to createRenderJob", async () => {
+    await renderLocal("/tmp/project", "/tmp/demo.gif", {
+      fps: { num: 15, den: 1 },
+      quality: "standard",
+      format: "gif",
+      gifLoop: 3,
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    expect(producerState.createdJobs[0]?.format).toBe("gif");
+    expect(producerState.createdJobs[0]?.gifLoop).toBe(3);
+  });
+
   it("omits variables from createRenderJob when not provided", async () => {
     await renderLocal("/tmp/project", "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -205,6 +226,41 @@ describe("renderLocal browser GPU config", () => {
     });
 
     expect(producerState.createdJobs[0]?.entryFile).toBeUndefined();
+  });
+
+  it("forwards --browser-timeout into resolveConfig as pageNavigationTimeout (ms)", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      pageNavigationTimeoutMs: 180_000,
+    });
+
+    expect(producerState.resolveConfigCalls[0]).toMatchObject({
+      pageNavigationTimeout: 180_000,
+    });
+  });
+
+  it("omits pageNavigationTimeout from resolveConfig when --browser-timeout is not set", async () => {
+    await renderLocal("/tmp/project", "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+    });
+
+    // Issue #1199: when the flag is omitted, the engine's DEFAULT_CONFIG must
+    // own the navigation timeout. Forwarding `undefined` would override
+    // `pageNavigationTimeout: 60_000` to `undefined` and re-introduce the
+    // bug in a different shape.
+    expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("pageNavigationTimeout");
   });
 
   it("forwards outputResolution to createRenderJob when --resolution is set", async () => {

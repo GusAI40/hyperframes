@@ -113,12 +113,20 @@ export function createStaticSeekPlaybackAdapter(
       playing = false;
       stopTicker();
     },
-    seek: (time) => {
+    seek: (time, options) => {
       renderSeek(time);
-      if (playing) {
-        playStartTime = currentTime;
-        playStartNow = clock.now();
+      if (options?.keepPlaying) {
+        if (playing) {
+          playStartTime = currentTime;
+          playStartNow = clock.now();
+        }
+        return;
       }
+      // Default seek aligns with wrapTimeline: stop the RAF ticker so the
+      // adapter's `playing` flag matches the public seek contract instead of
+      // silently driving renderSeek in the background.
+      playing = false;
+      stopTicker();
     },
     getTime: () => currentTime,
     getDuration: () => safeDuration,
@@ -135,8 +143,10 @@ export function wrapTimeline(tl: TimelineLike): PlaybackAdapter {
     play: () => tl.play(),
     pause: () => tl.pause(),
     seek: (t, options) => {
-      if (!options?.keepPlaying) tl.pause();
+      const shouldPause = !options?.keepPlaying;
+      if (shouldPause) tl.pause();
       tl.seek(t);
+      if (shouldPause) tl.pause();
     },
     getTime: () => tl.time(),
     getDuration: () => tl.duration(),

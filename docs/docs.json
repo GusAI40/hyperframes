@@ -53,7 +53,10 @@
             "group": "Getting Started",
             "pages": [
               "introduction",
+              "changelog",
+              "weekly-updates",
               "quickstart",
+              "showcase",
               "examples",
               "launch-videos"
             ]
@@ -81,6 +84,7 @@
               "guides/prompting",
               "guides/hyperframes-vs-remotion",
               "guides/gsap-animation",
+              "guides/keyframes",
               "guides/rendering",
               "guides/remove-background",
               "guides/hdr",
@@ -89,7 +93,8 @@
               "guides/timeline-editing",
               "guides/video-editor-cheatsheet",
               "guides/common-mistakes",
-              "guides/troubleshooting"
+              "guides/troubleshooting",
+              "guides/feedback"
             ]
           },
           {
@@ -97,6 +102,7 @@
             "pages": [
               "guides/deploy",
               "deploy/aws-lambda",
+              "deploy/gcp-cloud-run",
               "deploy/templates-on-lambda",
               "deploy/migrating-to-hyperframes-lambda"
             ]
@@ -122,16 +128,21 @@
               "catalog/components/caption-parallax-layers",
               "catalog/components/caption-particle-burst",
               "catalog/components/caption-pill-karaoke",
-              "catalog/components/caption-texture-lava",
+              "catalog/components/caption-texture",
               "catalog/components/caption-weight-shift"
             ]
           },
           {
             "group": "HTML-in-Canvas",
             "pages": [
+              "catalog/blocks/ios26-liquid-glass",
+              "catalog/blocks/liquid-glass-context-menu",
+              "catalog/blocks/liquid-glass-media-controls",
+              "catalog/blocks/liquid-glass-notification",
+              "catalog/blocks/liquid-glass-widgets",
+              "catalog/blocks/macos-tahoe-liquid-glass",
               "catalog/blocks/vfx-iphone-device",
               "catalog/blocks/vfx-liquid-background",
-              "catalog/blocks/vfx-liquid-glass",
               "catalog/blocks/vfx-magnetic",
               "catalog/blocks/vfx-portal",
               "catalog/blocks/vfx-shatter",
@@ -200,20 +211,15 @@
             ]
           },
           {
-            "group": "Maps",
-            "pages": [
-              "catalog/blocks/us-map",
-              "catalog/blocks/us-map-bubble",
-              "catalog/blocks/us-map-hex",
-              "catalog/blocks/us-map-flow",
-              "catalog/blocks/world-map",
-              "catalog/blocks/spain-map"
-            ]
-          },
-          {
             "group": "Data",
             "pages": [
-              "catalog/blocks/data-chart"
+              "catalog/blocks/data-chart",
+              "catalog/blocks/spain-map",
+              "catalog/blocks/us-map",
+              "catalog/blocks/us-map-bubble",
+              "catalog/blocks/us-map-flow",
+              "catalog/blocks/us-map-hex",
+              "catalog/blocks/world-map"
             ]
           },
           {
@@ -221,9 +227,18 @@
             "pages": [
               "catalog/components/grain-overlay",
               "catalog/components/grid-pixelate-wipe",
+              "catalog/components/parallax-unzoom",
+              "catalog/components/parallax-zoom",
               "catalog/components/shimmer-sweep",
-              "catalog/components/texture-mask-text",
               "catalog/components/vignette"
+            ]
+          },
+          {
+            "group": "Text Effects",
+            "pages": [
+              "catalog/components/caption-blend-difference",
+              "catalog/components/morph-text",
+              "catalog/components/texture-mask-text"
             ]
           },
           {
@@ -231,6 +246,35 @@
             "pages": [
               "catalog/blocks/flowchart",
               "catalog/blocks/logo-outro"
+            ]
+          },
+          {
+            "group": "Code Snippets",
+            "pages": [
+              "catalog/blocks/code-snippet-apple-terminal-basic",
+              "catalog/blocks/code-snippet-apple-terminal-clear-dark",
+              "catalog/blocks/code-snippet-apple-terminal-clear-light",
+              "catalog/blocks/code-snippet-apple-terminal-grass",
+              "catalog/blocks/code-snippet-apple-terminal-homebrew",
+              "catalog/blocks/code-snippet-apple-terminal-man-page",
+              "catalog/blocks/code-snippet-apple-terminal-novel",
+              "catalog/blocks/code-snippet-apple-terminal-ocean",
+              "catalog/blocks/code-snippet-apple-terminal-pro",
+              "catalog/blocks/code-snippet-apple-terminal-red-sands",
+              "catalog/blocks/code-snippet-apple-terminal-silver-aerogel",
+              "catalog/blocks/code-snippet-apple-terminal-solid-colors",
+              "catalog/blocks/code-snippet-dark-2026",
+              "catalog/blocks/code-snippet-dark-modern",
+              "catalog/blocks/code-snippet-dark-plus",
+              "catalog/blocks/code-snippet-high-contrast",
+              "catalog/blocks/code-snippet-high-contrast-light",
+              "catalog/blocks/code-snippet-light-2026",
+              "catalog/blocks/code-snippet-light-modern",
+              "catalog/blocks/code-snippet-light-plus",
+              "catalog/blocks/code-snippet-monokai",
+              "catalog/blocks/code-snippet-solarized-light",
+              "catalog/blocks/code-snippet-visual-studio-dark",
+              "catalog/blocks/code-snippet-visual-studio-light"
             ]
           }
         ]
@@ -266,6 +310,7 @@
               "contributing",
               "contributing/catalog",
               "contributing/release-channels",
+              "contributing/changelog-process",
               "contributing/testing-local-changes",
               "contributing/studio-manual-dom-editing"
             ]

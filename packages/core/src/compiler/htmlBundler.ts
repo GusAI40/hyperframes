@@ -8,7 +8,11 @@ import {
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument";
 // rewriteSubCompPaths functions are used by inlineSubCompositions (shared module)
-import { scopeCssToComposition, wrapScopedCompositionScript } from "./compositionScoping";
+import {
+  scopeCssToComposition,
+  wrapInlineScriptWithErrorBoundary,
+  wrapScopedCompositionScript,
+} from "./compositionScoping";
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
@@ -52,7 +56,14 @@ function injectInterceptor(html: string, runtimeMode: "inline" | "placeholder" =
     tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1">${inlinedRuntime}</script>`;
   }
   if (sanitized.includes("</head>")) {
-    return sanitized.replace("</head>", `${tag}\n</head>`);
+    // Use a function replacer so `String.prototype.replace`'s substitution
+    // patterns (`$&`, `$$`, `$'`, `` $` ``, `$1`–`$99`) inside the inlined
+    // runtime IIFE are passed through verbatim. The minified runtime
+    // contains the literal sequence `$&` as part of legitimate JS, and
+    // the older `(pattern, string)` form would expand it to the matched
+    // `</head>`, silently corrupting the runtime and breaking every
+    // timeline in the bundle with a parse-time SyntaxError.
+    return sanitized.replace("</head>", () => `${tag}\n</head>`);
   }
   const htmlOpenMatch = sanitized.match(/<html\b[^>]*>/i);
   if (htmlOpenMatch?.index != null) {
@@ -392,6 +403,13 @@ export function prepareFlattenedInnerRoot(innerRoot: Element): Element {
     prepared.setAttribute("data-hf-authored-id", authoredRootId);
   }
   prepared.setAttribute("data-hf-inner-root", "true");
+  const w = prepared.getAttribute("data-width");
+  const h = prepared.getAttribute("data-height");
+  const widthVal = w ? `${w}px` : "100%";
+  const heightVal = h ? `${h}px` : "100%";
+  const existingStyle = (prepared.getAttribute("style") || "").trim();
+  const fill = `width:${widthVal};height:${heightVal}`;
+  prepared.setAttribute("style", existingStyle ? `${existingStyle};${fill}` : fill);
   return prepared;
 }
 
@@ -510,6 +528,27 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
 }
 
 /**
+ * Force subpixel glyph positioning so headless rendering paths
+ * (chrome-headless-shell with BeginFrame) lay text out identically to full
+ * Chrome. `text-rendering: auto` resolves to `optimizeSpeed` (integer glyph
+ * advances) in headless-shell but `geometricPrecision` in full Chrome, which
+ * shifts line-wrap points and any animation that reads measured text width.
+ * Mirrors the producer's `injectTextRenderingRule` so bundled previews and
+ * compiled renders stay byte-aligned. `*` has zero specificity, so authored
+ * class/id rules still override.
+ */
+function injectTextRenderingRule(document: Document): void {
+  const head = document.head;
+  if (!head) return;
+  if (document.querySelector("style[data-hyperframes-text-rendering]")) return;
+
+  const styleEl = document.createElement("style");
+  styleEl.setAttribute("data-hyperframes-text-rendering", "true");
+  styleEl.textContent = "html,body,*{text-rendering:geometricPrecision}";
+  head.insertBefore(styleEl, head.firstChild);
+}
+
+/**
  * Concatenate JS chunks safely. Goals:
  *   - Each chunk's last statement is terminated, so joining can't introduce ASI
  *     surprises (e.g. `a()` followed by `(b)()` — the second chunk would parse
@@ -584,7 +623,7 @@ export async function bundleToSingleHtml(
   const rawHtml = readFileSync(indexPath, "utf-8");
   const compiled = await compileHtml(rawHtml, projectDir, options?.probeMediaDuration);
 
-  const staticGuard = validateHyperframeHtmlContract(compiled);
+  const staticGuard = await validateHyperframeHtmlContract(compiled);
   if (!staticGuard.isValid) {
     console.warn(
       `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
@@ -683,12 +722,34 @@ export async function bundleToSingleHtml(
     },
   });
   const compStyleChunks: string[] = [...subCompResult.styles];
-  const compScriptChunks: string[] = [...subCompResult.scripts];
-  const compExternalScriptSrcs: string[] = [...subCompResult.externalScriptSrcs];
+  const compScriptChunks: string[] = [];
   const compExternalLinks = [...subCompResult.externalLinks];
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
     ...subCompResult.variablesByComp,
   };
+  const seenCompScriptSrcs = new Set<string>();
+  for (const scriptItem of subCompResult.scriptItems) {
+    if (scriptItem.kind === "inline") {
+      compScriptChunks.push(scriptItem.content);
+      continue;
+    }
+    const extSrc = scriptItem.src;
+    if (seenCompScriptSrcs.has(extSrc)) continue;
+    seenCompScriptSrcs.add(extSrc);
+    if (isRelativeUrl(extSrc)) {
+      const jsPath = safePath(projectDir, extSrc);
+      const js = jsPath ? safeReadFile(jsPath) : null;
+      if (js != null) {
+        compScriptChunks.push(js);
+        continue;
+      }
+    }
+    if (!document.querySelector(`script[src="${extSrc}"]`)) {
+      const extScript = document.createElement("script");
+      extScript.setAttribute("src", extSrc);
+      document.body.appendChild(extScript);
+    }
+  }
 
   // Inline template compositions: inject <template id="X-template"> content into
   // matching empty host elements with data-composition-id="X" (no data-composition-src)
@@ -738,8 +799,23 @@ export async function bundleToSingleHtml(
         for (const scriptEl of [...innerRoot.querySelectorAll("script")]) {
           const externalSrc = (scriptEl.getAttribute("src") || "").trim();
           if (externalSrc) {
-            if (!compExternalScriptSrcs.includes(externalSrc)) {
-              compExternalScriptSrcs.push(externalSrc);
+            if (!seenCompScriptSrcs.has(externalSrc)) {
+              seenCompScriptSrcs.add(externalSrc);
+              if (isRelativeUrl(externalSrc)) {
+                const jsPath = safePath(projectDir, externalSrc);
+                const js = jsPath ? safeReadFile(jsPath) : null;
+                if (js != null) {
+                  compScriptChunks.push(js);
+                } else if (!document.querySelector(`script[src="${externalSrc}"]`)) {
+                  const extScript = document.createElement("script");
+                  extScript.setAttribute("src", externalSrc);
+                  document.body.appendChild(extScript);
+                }
+              } else if (!document.querySelector(`script[src="${externalSrc}"]`)) {
+                const extScript = document.createElement("script");
+                extScript.setAttribute("src", externalSrc);
+                document.body.appendChild(extScript);
+              }
             }
           } else {
             compScriptChunks.push(
@@ -752,7 +828,10 @@ export async function bundleToSingleHtml(
                     runtimeCompId || compId,
                     authoredRootId,
                   )
-                : `(function(){ try { ${scriptEl.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+                : wrapInlineScriptWithErrorBoundary(
+                    scriptEl.textContent || "",
+                    "[HyperFrames] composition script error:",
+                  ),
             );
           }
           scriptEl.remove();
@@ -775,8 +854,23 @@ export async function bundleToSingleHtml(
         for (const scriptEl of [...innerDoc.querySelectorAll("script")]) {
           const externalSrc = (scriptEl.getAttribute("src") || "").trim();
           if (externalSrc) {
-            if (!compExternalScriptSrcs.includes(externalSrc)) {
-              compExternalScriptSrcs.push(externalSrc);
+            if (!seenCompScriptSrcs.has(externalSrc)) {
+              seenCompScriptSrcs.add(externalSrc);
+              if (isRelativeUrl(externalSrc)) {
+                const jsPath = safePath(projectDir, externalSrc);
+                const js = jsPath ? safeReadFile(jsPath) : null;
+                if (js != null) {
+                  compScriptChunks.push(js);
+                } else if (!document.querySelector(`script[src="${externalSrc}"]`)) {
+                  const extScript = document.createElement("script");
+                  extScript.setAttribute("src", externalSrc);
+                  document.body.appendChild(extScript);
+                }
+              } else if (!document.querySelector(`script[src="${externalSrc}"]`)) {
+                const extScript = document.createElement("script");
+                extScript.setAttribute("src", externalSrc);
+                document.body.appendChild(extScript);
+              }
             }
           } else {
             compScriptChunks.push(
@@ -788,7 +882,10 @@ export async function bundleToSingleHtml(
                     runtimeScope,
                     runtimeCompId || compId,
                   )
-                : `(function(){ try { ${scriptEl.textContent || ""} } catch (_err) { console.error('[HyperFrames] composition script error:', _err); } })();`,
+                : wrapInlineScriptWithErrorBoundary(
+                    scriptEl.textContent || "",
+                    "[HyperFrames] composition script error:",
+                  ),
             );
           }
           scriptEl.remove();
@@ -804,14 +901,6 @@ export async function bundleToSingleHtml(
 
   // Inject external scripts from sub-compositions (e.g., Lottie CDN)
   // that aren't already present in the main document.
-  for (const extSrc of compExternalScriptSrcs) {
-    if (!document.querySelector(`script[src="${extSrc}"]`)) {
-      const extScript = document.createElement("script");
-      extScript.setAttribute("src", extSrc);
-      document.body.appendChild(extScript);
-    }
-  }
-
   for (const link of compExternalLinks) {
     const escapedHref = link.href.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     if (!document.querySelector(`link[href="${escapedHref}"]`)) {
@@ -842,6 +931,7 @@ export async function bundleToSingleHtml(
   enforceCompositionPixelSizing(document);
   autoHealMissingCompositionIds(document);
   coalesceHeadStylesAndBodyScripts(document);
+  injectTextRenderingRule(document);
 
   // Inline textual assets
   for (const el of [...document.querySelectorAll("[src], [href], [poster], [xlink\\:href]")]) {

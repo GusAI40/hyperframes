@@ -20,6 +20,7 @@ import {
   resolveProjectRelativeSrc,
   codecMayHaveAlpha,
   decoderForCodec,
+  getFrameAtTime,
   type VideoElement,
   type ExtractedFrames,
 } from "./videoFrameExtractor.js";
@@ -135,6 +136,35 @@ describe("resolveProjectRelativeSrc — sub-composition path clamping", () => {
     writeFileSync(join(compiledDir, "assets", "foo.mp4"), "");
     expect(resolveProjectRelativeSrc("assets/foo.mp4", projectDir, compiledDir)).toBe(
       join(compiledDir, "assets/foo.mp4"),
+    );
+  });
+
+  it("resolves percent-encoded non-Latin filenames across scripts", () => {
+    const projectDir = join(tmp, "project");
+    const cases = [
+      ["arabic", "%D9%87%D9%86%D8%A7-%D9%85%D8%B1%D9%88%D8%A7.mp4"],
+      ["japanese", "%E6%97%A5%E6%9C%AC%E8%AA%9E.mp4"],
+      ["cyrillic", "%D0%BF%D1%80%D0%B8%D0%B2%D0%B5%D1%82.mp4"],
+      ["korean", "%ED%95%9C%EA%B8%80.mp4"],
+    ] as const;
+
+    for (const [, encodedFilename] of cases) {
+      const filename = decodeURIComponent(encodedFilename);
+      writeFileSync(join(projectDir, "assets", filename), "");
+
+      expect(resolveProjectRelativeSrc(`assets/${encodedFilename}`, projectDir)).toBe(
+        join(projectDir, "assets", filename),
+      );
+    }
+  });
+
+  it("falls back to literal filenames when percent sequences are malformed", () => {
+    const projectDir = join(tmp, "project");
+    const filename = "100%-discount.mp4";
+    writeFileSync(join(projectDir, "assets", filename), "");
+
+    expect(resolveProjectRelativeSrc(`assets/${filename}`, projectDir)).toBe(
+      join(projectDir, "assets", filename),
     );
   });
 });
@@ -395,8 +425,10 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     expect(result.extracted).toHaveLength(1);
     const frames = readdirSync(join(outputDir, "v1")).filter((f) => f.endsWith(".jpg"));
     // Pre-fix behavior produced ~90 frames (a 25% shortfall).
-    expect(frames.length).toBeGreaterThanOrEqual(119);
-    expect(frames.length).toBeLessThanOrEqual(121);
+    // ±3 tolerance: FFmpeg's VFR→CFR normalization yields slightly different
+    // frame counts across versions (timestamp rounding in the fps filter).
+    expect(frames.length).toBeGreaterThanOrEqual(117);
+    expect(frames.length).toBeLessThanOrEqual(123);
 
     expect(result.phaseBreakdown).toBeDefined();
     expect(result.phaseBreakdown.extractMs).toBeGreaterThan(0);
@@ -656,8 +688,9 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     const frames = readdirSync(frameDir)
       .filter((f) => f.endsWith(".jpg"))
       .sort();
-    expect(frames.length).toBeGreaterThanOrEqual(299);
-    expect(frames.length).toBeLessThanOrEqual(301);
+    // ±3 tolerance: same FFmpeg VFR→CFR rounding variance as the mid-segment test.
+    expect(frames.length).toBeGreaterThanOrEqual(297);
+    expect(frames.length).toBeLessThanOrEqual(303);
 
     let prevHash: string | null = null;
     let duplicates = 0;
@@ -671,4 +704,62 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
     const duplicateRate = duplicates / frames.length;
     expect(duplicateRate).toBeLessThan(0.1);
   }, 60_000);
+});
+
+describe("getFrameAtTime — IEEE 754 boundary precision", () => {
+  function makeExtracted(fps: number, totalFrames: number): ExtractedFrames {
+    const framePaths = new Map<number, string>();
+    for (let i = 0; i < totalFrames; i++) framePaths.set(i, `frame-${i}.jpg`);
+    return {
+      fps,
+      totalFrames,
+      framePaths,
+      metadata: {
+        durationSeconds: totalFrames / fps,
+        width: 1920,
+        height: 1080,
+        codec: "h264",
+        hasAudio: false,
+        fps,
+      },
+    } as ExtractedFrames;
+  }
+
+  it("does not produce duplicate frames when data-start is grid-aligned", () => {
+    const extracted = makeExtracted(25, 351);
+    const videoStart = 0;
+    const seen: string[] = [];
+    let duplicates = 0;
+    for (let i = 0; i < 351; i++) {
+      const globalTime = i / 25;
+      const frame = getFrameAtTime(extracted, globalTime, videoStart);
+      if (frame && seen.length > 0 && frame === seen[seen.length - 1]) duplicates++;
+      if (frame) seen.push(frame);
+    }
+    expect(duplicates).toBe(0);
+  });
+
+  it("returns monotonically increasing frame indices", () => {
+    const extracted = makeExtracted(25, 100);
+    let lastIndex = -1;
+    for (let i = 0; i < 100; i++) {
+      const globalTime = i / 25;
+      const frame = getFrameAtTime(extracted, globalTime, 0);
+      const idx = frame ? parseInt(frame.split("-")[1]!) : -1;
+      expect(idx).toBeGreaterThan(lastIndex);
+      lastIndex = idx;
+    }
+  });
+
+  it("handles the 0.28 * 25 boundary case (6.999999 vs 7)", () => {
+    const extracted = makeExtracted(25, 10);
+    const frame = getFrameAtTime(extracted, 0.28, 0);
+    expect(frame).toBe("frame-7.jpg");
+  });
+
+  it("mediaStart does not offset frame index (extractor handles trim via -ss)", () => {
+    const extracted = makeExtracted(25, 100);
+    const frame = getFrameAtTime(extracted, 0, 0, false, 1.0);
+    expect(frame).toBe("frame-0.jpg");
+  });
 });

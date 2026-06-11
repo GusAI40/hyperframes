@@ -6,6 +6,11 @@ import {
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../utils/variables.js";
+import {
+  parseGifLoopArg,
+  resolveBrowserTimeoutMsArg,
+  resolveCompositionEntryArg,
+} from "../utils/renderArgs.js";
 
 export const examples: Example[] = [
   ["Render to MP4", "hyperframes render --output output.mp4"],
@@ -16,6 +21,10 @@ export const examples: Example[] = [
   ],
   ["Render transparent overlay (ProRes)", "hyperframes render --format mov --output overlay.mov"],
   ["Render transparent WebM overlay", "hyperframes render --format webm --output overlay.webm"],
+  [
+    "Render animated GIF for PRs/docs",
+    "hyperframes render --format gif --fps 15 --gif-loop 0 --output demo.gif",
+  ],
   [
     "Render PNG sequence (RGBA frames for AE/Nuke/Fusion)",
     "hyperframes render --format png-sequence --output frames/",
@@ -44,12 +53,20 @@ import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import { renderProgress } from "../ui/progress.js";
-import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
+import {
+  trackRenderComplete,
+  trackRenderError,
+  trackRenderObservation,
+} from "../telemetry/events.js";
+import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
+import { renderJobObservabilityTelemetryPayload } from "../telemetry/renderObservability.js";
 import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
-import { buildDockerRunArgs } from "../utils/dockerRunArgs.js";
-import type { RenderJob } from "@hyperframes/producer";
+import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import type { ProducerLogger, RenderJob } from "@hyperframes/producer";
 import {
   normalizeResolutionFlag,
   parseFps,
@@ -88,22 +105,31 @@ function formatFpsParseError(
       return `Got "${input}". Decimal frame rates are ambiguous — use the exact rational form instead (e.g. 30000/1001 for 29.97).`;
   }
 }
-const VALID_FORMAT = new Set(["mp4", "webm", "mov", "png-sequence"]);
+const RENDER_FORMATS = ["mp4", "webm", "mov", "png-sequence", "gif"] as const;
+type RenderFormat = (typeof RENDER_FORMATS)[number];
+const VALID_FORMAT = new Set<string>(RENDER_FORMATS);
+const RENDER_FORMAT_LABEL = "mp4, webm, mov, png-sequence, or gif";
 // `png-sequence` writes a directory of frames rather than a single muxed file,
 // so its "extension" is empty — the auto-output path becomes a directory name.
-const FORMAT_EXT: Record<string, string> = {
+const FORMAT_EXT: Record<RenderFormat, string> = {
   mp4: ".mp4",
   webm: ".webm",
   mov: ".mov",
   "png-sequence": "",
+  gif: ".gif",
 };
 
 const CPU_CORE_COUNT = cpus().length;
 
+function parseRenderFormat(input: string): RenderFormat | undefined {
+  if (!VALID_FORMAT.has(input)) return undefined;
+  return RENDER_FORMATS.find((format) => format === input);
+}
+
 export default defineCommand({
   meta: {
     name: "render",
-    description: "Render a composition to MP4, WebM, MOV, or a PNG sequence",
+    description: "Render a composition to MP4, WebM, MOV, GIF, or a PNG sequence",
   },
   args: {
     dir: {
@@ -116,7 +142,8 @@ export default defineCommand({
       alias: "c",
       description:
         "Render a specific composition file instead of index.html (e.g. compositions/intro.html). " +
-        "Sub-compositions using <template> wrappers must be referenced from index.html via data-composition-src.",
+        "Sub-compositions using <template> wrappers must be referenced from index.html via data-composition-src. " +
+        "Pass `.` (or omit the flag) to render the project's index.html.",
     },
     output: {
       type: "string",
@@ -141,10 +168,14 @@ export default defineCommand({
     format: {
       type: "string",
       description:
-        "Output format: mp4, webm, mov, png-sequence " +
+        "Output format: mp4, webm, mov, gif, png-sequence " +
         "(MOV/WebM render with transparency; png-sequence writes RGBA frames " +
-        "to a directory for AE/Nuke/Fusion ingest)",
+        "to a directory for AE/Nuke/Fusion ingest; gif is best at 15fps for PRs/docs)",
       default: "mp4",
+    },
+    "gif-loop": {
+      type: "string",
+      description: "GIF loop count, 0 = infinite. Range: 0-65535. Only used with --format gif.",
     },
     workers: {
       type: "string",
@@ -231,7 +262,49 @@ export default defineCommand({
         "Use --no-page-side-compositing to force the layered path.",
       default: true,
     },
+    "browser-timeout": {
+      type: "string",
+      description:
+        "Puppeteer page-navigation timeout in SECONDS for the entry HTML. " +
+        "Increase when heavy compositions (many videos / fonts / asset " +
+        "requests) cannot reach domcontentloaded within the 60s default " +
+        "(see issue #1199). Accepts 0.001-86400 (24h cap). " +
+        "Note: this controls page.goto only — very heavy compositions may " +
+        "also need PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS / " +
+        "PRODUCER_PLAYER_READY_TIMEOUT_MS bumped (the post-goto window.__hf " +
+        "readiness poll has its own 45s budget). " +
+        "Env fallback: PRODUCER_PAGE_NAVIGATION_TIMEOUT_MS (MILLISECONDS).",
+    },
+    "protocol-timeout": {
+      type: "string",
+      description:
+        "CDP protocol timeout in ms. Increase on slow/low-memory machines " +
+        "where Chrome operations time out. Default: 300000 (5 min). " +
+        "Env: PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS.",
+    },
+    "player-ready-timeout": {
+      type: "string",
+      description:
+        "Timeout in ms for the composition player to become ready. " +
+        "Increase for complex compositions on slow hardware. Default: 45000 (45 s). " +
+        "Env: PRODUCER_PLAYER_READY_TIMEOUT_MS.",
+    },
+    "low-memory-mode": {
+      type: "boolean",
+      description:
+        "Force the low-memory safe render profile on (--low-memory-mode) or " +
+        "off (--no-low-memory-mode). Safe mode pins to 1 worker, uses " +
+        "screenshot capture, and skips auto-worker calibration to avoid " +
+        "memory thrash on constrained machines. Default: auto-detected from " +
+        "total RAM (<= 8 GB). Env: PRODUCER_LOW_MEMORY_MODE.",
+    },
   },
+  // `run` is the citty handler for `hyperframes render` — sequential flag
+  // validation + render dispatch. Inherited CRITICAL on main (CRAP 1290);
+  // this PR extracted --browser-timeout + --composition validators into
+  // `utils/renderArgs.ts`, reducing cyclomatic 75→65 and CRAP 1290→978.
+  // Full decomposition is tracked separately and out of scope for #1199.
+  // fallow-ignore-next-line complexity
   async run({ args }) {
     // ── Resolve project ────────────────────────────────────────────────────
     const project = resolveProject(args.dir);
@@ -247,7 +320,7 @@ export default defineCommand({
       errorBox("Invalid fps", formatFpsParseError(args.fps ?? "30", fpsParse.reason));
       process.exit(1);
     }
-    const fps: Fps = fpsParse.value;
+    let fps: Fps = fpsParse.value;
 
     // ── Validate quality ───────────────────────────────────────────────────
     const qualityRaw = args.quality ?? "standard";
@@ -259,11 +332,24 @@ export default defineCommand({
 
     // ── Validate format ─────────────────────────────────────────────────
     const formatRaw = args.format ?? "mp4";
-    if (!VALID_FORMAT.has(formatRaw)) {
-      errorBox("Invalid format", `Got "${formatRaw}". Must be mp4, webm, mov, or png-sequence.`);
+    const format = parseRenderFormat(formatRaw);
+    if (!format) {
+      errorBox("Invalid format", `Got "${formatRaw}". Must be ${RENDER_FORMAT_LABEL}.`);
       process.exit(1);
     }
-    const format = formatRaw as "mp4" | "webm" | "mov" | "png-sequence";
+
+    let gifFpsCapped = false;
+    if (format === "gif" && fpsToNumber(fps) > 30) {
+      fps = { num: 30, den: 1 };
+      gifFpsCapped = true;
+    }
+
+    const gifLoopParse = parseGifLoopArg(args["gif-loop"]);
+    if (!gifLoopParse.ok) {
+      errorBox("Invalid gif-loop", gifLoopParse.message);
+      process.exit(1);
+    }
+    const gifLoop = gifLoopParse.value ?? (format === "gif" ? 0 : undefined);
 
     // ── Validate resolution ────────────────────────────────────────────────
     let outputResolution: CanvasResolution | undefined;
@@ -302,9 +388,43 @@ export default defineCommand({
       workers = parsed;
     }
 
+    // ── Validate timeout overrides ─────────────────────────────────────
+    let protocolTimeout: number | undefined;
+    if (args["protocol-timeout"] != null) {
+      const parsed = parseInt(args["protocol-timeout"], 10);
+      if (isNaN(parsed) || parsed < 1000) {
+        errorBox(
+          "Invalid protocol-timeout",
+          `Got "${args["protocol-timeout"]}". Must be a number >= 1000 (ms).`,
+        );
+        process.exit(1);
+      }
+      protocolTimeout = parsed;
+    }
+    let playerReadyTimeout: number | undefined;
+    if (args["player-ready-timeout"] != null) {
+      const parsed = parseInt(args["player-ready-timeout"], 10);
+      if (isNaN(parsed) || parsed < 1000) {
+        errorBox(
+          "Invalid player-ready-timeout",
+          `Got "${args["player-ready-timeout"]}". Must be a number >= 1000 (ms).`,
+        );
+        process.exit(1);
+      }
+      playerReadyTimeout = parsed;
+    }
+
     // ── Wire opt-in: page-side compositing ───────────────────────────────
     if (args["page-side-compositing"] === false) {
       process.env.HF_PAGE_SIDE_COMPOSITING = "false";
+    }
+
+    // ── Override: low-memory safe profile (tri-state) ────────────────────
+    // Absent → auto-detect from total RAM inside resolveConfig. Explicit
+    // --low-memory-mode / --no-low-memory-mode forces it on/off via the env
+    // var the producer's resolveConfig reads.
+    if (args["low-memory-mode"] != null) {
+      process.env.PRODUCER_LOW_MEMORY_MODE = args["low-memory-mode"] ? "true" : "false";
     }
 
     // ── Validate max-concurrent-renders ─────────────────────────────────
@@ -323,6 +443,7 @@ export default defineCommand({
     // ── Resolve output path ───────────────────────────────────────────────
     const rendersDir = resolve("renders");
     const ext = FORMAT_EXT[format] ?? ".mp4";
+    // fallow-ignore-next-line code-duplication
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10);
     const timePart = now.toTimeString().slice(0, 8).replace(/:/g, "-");
@@ -375,29 +496,16 @@ export default defineCommand({
       process.exit(1);
     }
 
-    // ── Validate composition entry file ──────────────────────────────────
-    const entryFile = args.composition?.trim().replace(/^\.\//, "") || undefined;
-    if (entryFile) {
-      const absProjectDir = resolve(project.dir);
-      const entryPath = resolve(absProjectDir, entryFile);
-      if (!entryPath.startsWith(absProjectDir)) {
-        errorBox(
-          "Invalid composition path",
-          `Entry file must stay inside the project directory: ${entryFile}`,
-        );
-        process.exit(1);
-      }
-      try {
-        statSync(entryPath);
-      } catch {
-        errorBox(
-          "Composition not found",
-          `"${entryFile}" does not exist in the project directory.`,
-          "Pass a path to a .html file relative to the project root (e.g. compositions/intro.html).",
-        );
-        process.exit(1);
-      }
+    if (!quiet && gifFpsCapped) {
+      console.log(c.warn("  GIF output is capped at 30fps. Use --fps 15 for smaller files."));
     }
+
+    // ── Validate browser-timeout (seconds) and composition entry file ────
+    // Both validators live in `utils/renderArgs.ts` so the parse/reject
+    // branches are unit-testable without `process.exit`. See issue #1199
+    // for the original EISDIR / silent-timeout-0 footguns this guards.
+    const pageNavigationTimeoutMs = resolveBrowserTimeoutMsArg(args["browser-timeout"]);
+    const entryFile = resolveCompositionEntryArg(args.composition, project.dir, statSync);
 
     // ── Print render plan ─────────────────────────────────────────────────
     if (!quiet) {
@@ -432,19 +540,6 @@ export default defineCommand({
       console.log("");
     }
 
-    // ── Check FFmpeg for local renders ───────────────────────────────────
-    if (!useDocker) {
-      const { findFFmpeg, getFFmpegInstallHint } = await import("../browser/ffmpeg.js");
-      if (!findFFmpeg()) {
-        errorBox(
-          "FFmpeg not found",
-          "Rendering requires FFmpeg for video encoding.",
-          `Install: ${getFFmpegInstallHint()}`,
-        );
-        process.exit(1);
-      }
-    }
-
     // ── Ensure browser for local renders ────────────────────────────────
     let browserPath: string | undefined;
     if (!useDocker) {
@@ -477,7 +572,7 @@ export default defineCommand({
 
     // ── Pre-render lint ──────────────────────────────────────────────────
     {
-      const lintResult = lintProject(project);
+      const lintResult = await lintProject(project);
       if (!quiet && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
         console.log("");
         for (const line of formatLintFindings(lintResult, { errorsFirst: true })) console.log(line);
@@ -522,6 +617,7 @@ export default defineCommand({
         fps,
         quality,
         format,
+        gifLoop,
         workers,
         gpu: useGpu,
         browserGpuMode,
@@ -533,6 +629,9 @@ export default defineCommand({
         entryFile,
         outputResolution,
         pageSideCompositing: args["page-side-compositing"] !== false,
+        pageNavigationTimeoutMs,
+        protocolTimeout,
+        playerReadyTimeout,
         exitAfterComplete: true,
       });
     } else {
@@ -540,6 +639,7 @@ export default defineCommand({
         fps,
         quality,
         format,
+        gifLoop,
         workers,
         gpu: useGpu,
         browserGpuMode,
@@ -551,6 +651,9 @@ export default defineCommand({
         variables,
         entryFile,
         outputResolution,
+        pageNavigationTimeoutMs,
+        protocolTimeout,
+        playerReadyTimeout,
         exitAfterComplete: true,
       });
     }
@@ -560,7 +663,8 @@ export default defineCommand({
 interface RenderOptions {
   fps: Fps;
   quality: "draft" | "standard" | "high";
-  format: "mp4" | "webm" | "mov" | "png-sequence";
+  format: RenderFormat;
+  gifLoop?: number;
   workers?: number;
   gpu: boolean;
   /**
@@ -580,6 +684,17 @@ interface RenderOptions {
   /** Output resolution preset; see `resolveDeviceScaleFactor` for constraints. */
   outputResolution?: CanvasResolution;
   pageSideCompositing?: boolean;
+  /**
+   * Puppeteer `page.goto()` timeout for the entry HTML, in milliseconds.
+   * When omitted, the engine default (60s) applies. Surfaced as
+   * `--browser-timeout <seconds>` at the CLI and threaded through to the
+   * producer's EngineConfig override.
+   */
+  pageNavigationTimeoutMs?: number;
+  /** CDP protocol timeout override (ms). */
+  protocolTimeout?: number;
+  /** Player-ready timeout override (ms). */
+  playerReadyTimeout?: number;
 }
 
 /**
@@ -642,15 +757,23 @@ function dockerImageExists(tag: string): boolean {
   }
 }
 
-function ensureDockerImage(version: string, quiet: boolean): string {
-  const tag = dockerImageTag(version);
+function dockerImageTagForPlatform(version: string, platform: string): string {
+  // Suffix the tag with the arch so amd64 and arm64 images of the same
+  // hyperframes version coexist in the local cache (a developer who flips
+  // between hosts shouldn't have to rebuild).
+  const archSuffix = platform === "linux/arm64" ? "-arm64" : "";
+  return `${dockerImageTag(version)}${archSuffix}`;
+}
+
+function ensureDockerImage(version: string, platform: string, quiet: boolean): string {
+  const tag = dockerImageTagForPlatform(version, platform);
 
   if (dockerImageExists(tag)) {
     if (!quiet) console.log(c.dim(`  Docker image: ${tag} (cached)`));
     return tag;
   }
 
-  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag}...`));
+  if (!quiet) console.log(c.dim(`  Building Docker image: ${tag} (${platform})...`));
 
   const dockerfilePath = resolveDockerfilePath();
 
@@ -659,16 +782,27 @@ function ensureDockerImage(version: string, quiet: boolean): string {
   mkdirSync(tmpDir, { recursive: true });
   writeFileSync(join(tmpDir, "Dockerfile"), readFileSync(dockerfilePath));
 
-  // linux/amd64 forced — chrome-headless-shell doesn't ship ARM Linux binaries
+  // Platform is now derived from the host arch (see resolveDockerPlatform).
+  // Apple Silicon and other arm64 hosts get a native linux/arm64 build; the
+  // Dockerfile skips chrome-headless-shell on arm64 and falls back to system
+  // chromium because chrome-headless-shell ships linux64 only.
+  //
+  // TARGETARCH is passed explicitly rather than relying on BuildKit's
+  // automatic platform args because the legacy builder (and some BuildKit
+  // configurations like colima 0.6.x) leaves it unset, which would defeat
+  // the arch conditional in the Dockerfile.
+  const targetArch = platform === "linux/arm64" ? "arm64" : "amd64";
   try {
     execFileSync(
       "docker",
       [
         "build",
         "--platform",
-        "linux/amd64",
+        platform,
         "--build-arg",
         `HYPERFRAMES_VERSION=${version}`,
+        "--build-arg",
+        `TARGETARCH=${targetArch}`,
         "-t",
         tag,
         tmpDir,
@@ -686,6 +820,50 @@ function ensureDockerImage(version: string, quiet: boolean): string {
   return tag;
 }
 
+/**
+ * Resolves the Docker `--platform` for this host and enforces the constraints
+ * that come with it — keeping that policy out of `renderDocker` so the
+ * orchestrator stays focused on build/run wiring. May terminate the process
+ * via errorBox on unrecoverable mismatches (e.g. --gpu on arm64).
+ */
+function resolveDockerHostPlatform(options: RenderOptions): string {
+  const platform = resolveDockerPlatform();
+
+  // Docker Desktop on Apple Silicon (and colima with VZ) doesn't implement
+  // the `--gpus` host-passthrough flag, so requesting `--gpu` on a linux/arm64
+  // container fails at `docker run` with an opaque device-driver error. Catch
+  // it early with actionable guidance.
+  if (options.gpu && platform === "linux/arm64") {
+    errorBox(
+      "--gpu is not supported with --docker on arm64 hosts",
+      "Docker Desktop/colima on Apple Silicon doesn't expose --gpus host passthrough to linux/arm64 containers.",
+      "Drop --gpu, or run a native (non-Docker) render on this host, or set HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 if you need GPU encoding (slow under qemu but works).",
+    );
+    process.exit(1);
+  }
+
+  if (!options.quiet && platform === "linux/arm64") {
+    // chrome-headless-shell doesn't publish a linux-arm64 build, so the arm64
+    // image falls back to system chromium. That loses byte-for-byte parity
+    // with amd64 renders — fine for end-user output, not fine if you're
+    // comparing against an amd64 golden baseline. Set
+    // HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 to keep parity (qemu-emulated,
+    // slower).
+    console.log(
+      c.dim(
+        "  Host is arm64 — using linux/arm64 image with system chromium " +
+          "(output won't be byte-identical to amd64 renders; " +
+          "set HYPERFRAMES_DOCKER_PLATFORM=linux/amd64 to force parity).",
+      ),
+    );
+  }
+
+  return platform;
+}
+
+// Inherited minor finding (CRAP 37.1, cyclomatic 11). This PR only added
+// `pageNavigationTimeoutMs` to the options forwarded to `buildDockerRunArgs`.
+// fallow-ignore-next-line complexity
 async function renderDocker(
   projectDir: string,
   outputPath: string,
@@ -699,9 +877,11 @@ async function renderDocker(
     console.log(c.dim("  Dev mode: using hyperframes@latest in Docker image"));
   }
 
+  const platform = resolveDockerHostPlatform(options);
+
   let imageTag: string;
   try {
-    imageTag = ensureDockerImage(dockerVersion, options.quiet);
+    imageTag = ensureDockerImage(dockerVersion, platform, options.quiet);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     const isDockerMissing = /connect|not found|ENOENT/i.test(message);
@@ -722,10 +902,12 @@ async function renderDocker(
     projectDir: resolve(projectDir),
     outputDir: resolve(outputDir),
     outputFilename,
+    platform,
     options: {
       fps: options.fps,
       quality: options.quality,
       format: options.format,
+      gifLoop: options.gifLoop,
       workers: options.workers,
       gpu: options.gpu,
       browserGpu: options.browserGpuMode === "hardware",
@@ -737,6 +919,7 @@ async function renderDocker(
       entryFile: options.entryFile,
       outputResolution: options.outputResolution,
       pageSideCompositing: options.pageSideCompositing,
+      pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
     },
   });
 
@@ -778,13 +961,27 @@ async function renderDocker(
   if (options.exitAfterComplete) scheduleRenderProcessExit();
 }
 
+// fallow-ignore-next-line complexity
 export async function renderLocal(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
 ): Promise<void> {
   const producer = await loadProducer();
+
+  if (!findFFmpeg()) {
+    errorBox(
+      "FFmpeg not found",
+      "FFmpeg is required to encode video. The render cannot proceed without it.",
+      getFFmpegInstallHint(),
+    );
+    process.exit(1);
+  }
+
   const startTime = Date.now();
+  const logger = createRenderTelemetryLogger(
+    producer.createConsoleLogger?.("info") ?? createNoopProducerLogger(),
+  );
 
   // Pass the resolved browser path to the producer via env var so
   // resolveConfig() picks it up. This bridges the CLI's ensureBrowser()
@@ -798,10 +995,17 @@ export async function renderLocal(
     fps: options.fps,
     quality: options.quality,
     format: options.format,
+    gifLoop: options.gifLoop,
     workers: options.workers,
     useGpu: options.gpu,
+    logger,
     producerConfig: producer.resolveConfig({
       browserGpuMode: options.browserGpuMode ?? "software",
+      ...(options.pageNavigationTimeoutMs != null
+        ? { pageNavigationTimeout: options.pageNavigationTimeoutMs }
+        : {}),
+      ...(options.protocolTimeout != null && { protocolTimeout: options.protocolTimeout }),
+      ...(options.playerReadyTimeout != null && { playerReadyTimeout: options.playerReadyTimeout }),
     }),
     hdrMode: options.hdrMode,
     crf: options.crf,
@@ -820,12 +1024,24 @@ export async function renderLocal(
   try {
     await producer.executeRenderJob(job, projectDir, outputPath, onProgress);
   } catch (error: unknown) {
-    handleRenderError(error, options, startTime, false, "Try --docker for containerized rendering");
+    handleRenderError(
+      error,
+      options,
+      startTime,
+      false,
+      "Try --docker for containerized rendering",
+      job.failedStage,
+      job,
+    );
   }
 
   const elapsed = Date.now() - startTime;
   trackRenderMetrics(job, elapsed, options, false);
   printRenderComplete(outputPath, elapsed, options.quiet);
+  await maybePromptRenderFeedback({
+    renderDurationMs: elapsed,
+    quiet: options.quiet,
+  });
   if (options.exitAfterComplete) scheduleRenderProcessExit();
 }
 
@@ -856,14 +1072,99 @@ function getMemorySnapshot() {
   };
 }
 
+function metaString(meta: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = meta?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function metaNumber(meta: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = meta?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function metaBoolean(meta: Record<string, unknown> | undefined, key: string): boolean | undefined {
+  const value = meta?.[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function trackRenderTraceFromLog(message: string, meta: Record<string, unknown> | undefined): void {
+  if (message !== "[Render:trace]") return;
+  const status = metaString(meta, "status");
+  if (status !== "checkpoint" && status !== "error") return;
+  trackRenderObservation({
+    source: "cli",
+    renderJobId: metaString(meta, "renderJobId"),
+    phase: metaString(meta, "phase"),
+    status,
+    compositionHash: metaString(meta, "compositionHash"),
+    elapsedMs: metaNumber(meta, "elapsedMs"),
+    durationMs: metaNumber(meta, "durationMs"),
+    message: metaString(meta, "message"),
+    workerCount: metaNumber(meta, "workerCount"),
+    forceScreenshot: metaBoolean(meta, "forceScreenshot"),
+    useStreamingEncode: metaBoolean(meta, "useStreamingEncode"),
+    useLayeredComposite: metaBoolean(meta, "useLayeredComposite"),
+    usePageSideCompositing: metaBoolean(meta, "usePageSideCompositing"),
+    hasHdrContent: metaBoolean(meta, "hasHdrContent"),
+    captureMode: metaString(meta, "captureMode"),
+    videoCount: metaNumber(meta, "videoCount"),
+    extractedVideoCount: metaNumber(meta, "extractedVideoCount"),
+    totalFramesExtracted: metaNumber(meta, "totalFramesExtracted"),
+    maxFramesPerVideo: metaNumber(meta, "maxFramesPerVideo"),
+    avgFramesPerExtractedVideo: metaNumber(meta, "avgFramesPerExtractedVideo"),
+    vfrPreflightCount: metaNumber(meta, "vfrPreflightCount"),
+    vfrPreflightMs: metaNumber(meta, "vfrPreflightMs"),
+    cacheHits: metaNumber(meta, "cacheHits"),
+    cacheMisses: metaNumber(meta, "cacheMisses"),
+  });
+}
+
+function createRenderTelemetryLogger(base: ProducerLogger): ProducerLogger {
+  return {
+    error(message, meta) {
+      base.error(message, meta);
+      trackRenderTraceFromLog(message, meta);
+    },
+    warn(message, meta) {
+      base.warn(message, meta);
+      trackRenderTraceFromLog(message, meta);
+    },
+    info(message, meta) {
+      base.info(message, meta);
+      trackRenderTraceFromLog(message, meta);
+    },
+    debug(message, meta) {
+      base.debug(message, meta);
+      trackRenderTraceFromLog(message, meta);
+    },
+    isLevelEnabled(level) {
+      return base.isLevelEnabled?.(level) ?? true;
+    },
+  };
+}
+
+function createNoopProducerLogger(): ProducerLogger {
+  return {
+    error() {},
+    warn() {},
+    info() {},
+    debug() {},
+    isLevelEnabled() {
+      return true;
+    },
+  };
+}
+
 function handleRenderError(
   error: unknown,
   options: RenderOptions,
   startTime: number,
   docker: boolean,
   hint: string,
+  failedStage?: string,
+  job?: RenderJob,
 ): never {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = normalizeErrorMessage(error);
   trackRenderError({
     fps: fpsToNumber(options.fps),
     quality: options.quality,
@@ -872,6 +1173,8 @@ function handleRenderError(
     gpu: options.gpu,
     elapsedMs: Date.now() - startTime,
     errorMessage: message,
+    failedStage,
+    ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
   });
   errorBox("Render failed", message, hint);
@@ -882,6 +1185,9 @@ function handleRenderError(
  * Extract rich metrics from the completed render job and send to telemetry.
  * speed_ratio = composition_duration / render_time — higher is better, >1 means faster than realtime.
  */
+// Inherited CRITICAL (CRAP 148.4, cyclomatic 24): exhaustive nullish-fallback
+// chain across 30+ telemetry fields. Not touched by this PR.
+// fallow-ignore-next-line complexity
 function trackRenderMetrics(
   job: RenderJob,
   elapsedMs: number,
@@ -931,6 +1237,7 @@ function trackRenderMetrics(
     extractPhase3Ms: extract?.extractMs,
     extractCacheHits: extract?.cacheHits,
     extractCacheMisses: extract?.cacheMisses,
+    ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
   });
 }

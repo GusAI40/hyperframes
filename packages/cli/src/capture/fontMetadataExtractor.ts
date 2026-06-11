@@ -36,13 +36,30 @@ export interface FontFileMetadata {
    * typographic family aggregate cleanly. See rawFamily for the unmodified value.
    */
   family: string;
-  /** Raw family name from the OpenType name table (nameID 16 preferred, then nameID 1). Empty if unidentifiable. */
+  /**
+   * Raw family name as extracted, before canonicalization. Source precedence:
+   *   1. OpenType `name` table (nameID 16 if present, else nameID 1)
+   *   2. Fallback: derived from the PostScript name (nameID 6) before the first
+   *      `-` (e.g. PostScript "Inter-Regular" → "Inter")
+   * Empty string when both the name table and PostScript name are absent
+   * (i.e. when `identified` is false).
+   */
   rawFamily: string;
   /** Subfamily / style name from nameID 17 or 2 (e.g. "Regular", "Bold Italic") */
   subfamily: string;
   /** PostScript name from nameID 6 (e.g. "Inter-Regular") */
   postscript: string;
-  /** OS/2 usWeightClass (100–900). Approximate for variable fonts — see variationAxes. */
+  /**
+   * Weight value. Typically the OS/2 `usWeightClass` (100–900) when present.
+   * Other values you may see:
+   *   - `0`: returned when the file is `identified: false` (no name-table data
+   *     to infer from); treat as unknown.
+   *   - `950`: emitted by the family-name canonicalization when a foundry
+   *     packaged "ExtraBlack" or "UltraBlack" as its own family. This is
+   *     outside the 100-900 standard range but mirrors the foundry intent.
+   * For variable fonts, this is the file's default axis position — see
+   * `variationAxes` for the available `wght` range.
+   */
   weight: number;
   /** "normal" or "italic" — derived from subfamily and OS/2 fsSelection */
   style: "normal" | "italic";
@@ -110,7 +127,9 @@ export function extractFontMetadata(fontsDir: string, outputPath: string): Fonts
     unidentified,
     meta: {
       generatedAt: new Date().toISOString(),
-      tool: "fontkit@2.0.4",
+      // Record just the tool name; the version moves with the dep and would
+      // otherwise drift from a hardcoded string on every fontkit bump.
+      tool: "fontkit",
     },
   };
 
@@ -206,10 +225,21 @@ function deriveFamilyFromPostscript(postscript: string): string {
   return (dashIdx > 0 ? postscript.slice(0, dashIdx) : postscript).trim();
 }
 
-/** Fallback when OS/2 table is missing — guess weight from "Bold", "Light", etc. */
+/**
+ * Fallback when OS/2 table is missing — guess weight from "Bold", "Light", etc.
+ *
+ * Normalizes spaces and hyphens out of the subfamily before matching so that
+ * fonts using spaced names ("Extra Light", "Semi Bold") or hyphenated names
+ * ("Extra-Light", "Semi-Bold") resolve to the same weight as the concatenated
+ * forms ("ExtraLight", "SemiBold"). Without this, a font subfamily of
+ * "Extra Light" would fall through every concat check and end at the 400
+ * default, misreporting a 200-weight font as 400.
+ *
+ * Exported for unit testing.
+ */
 // fallow-ignore-next-line complexity
-function inferWeightFromSubfamily(subfamily: string): number {
-  const s = subfamily.toLowerCase();
+export function inferWeightFromSubfamily(subfamily: string): number {
+  const s = subfamily.toLowerCase().replace(/[\s-]+/g, "");
   if (s.includes("thin")) return 100;
   if (s.includes("extralight") || s.includes("ultralight")) return 200;
   if (s.includes("light")) return 300;
@@ -273,8 +303,9 @@ const WEIGHT_TOKEN_RE = new RegExp(`\\s+(${Object.keys(WEIGHT_TOKEN_TO_VALUE).jo
  * italic flag is recovered separately from the OS/2 fsSelection bit, so no
  * information is lost.
  */
+// Exported for unit testing.
 // fallow-ignore-next-line complexity
-function canonicalizeFamily(family: string): {
+export function canonicalizeFamily(family: string): {
   canonical: string;
   inferredWeight: number | null;
 } {

@@ -1,5 +1,26 @@
 #!/usr/bin/env node
 
+// ── EPIPE suppression (must run before ANY stdout/stderr write) ────────────
+// When the CLI runs inside a piped agent environment (Claude Code, Codex,
+// Cursor, etc.), the reader may close the pipe before we finish writing.
+// Node treats EPIPE on stdout/stderr as an uncaughtException, which crashes
+// the process. This is a normal lifecycle event — suppress it.
+//
+// commandFailed must be declared here (before the handlers) so the EPIPE
+// stream-error path can set it before process.exit(0). The telemetry exit
+// handler reads this flag to determine success/failure — an EPIPE exit
+// should NOT score as success:true in telemetry.
+let commandFailed = false;
+
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (err) => {
+    if ((err as NodeJS.ErrnoException).code === "EPIPE") {
+      commandFailed = true;
+      process.exit(0);
+    }
+  });
+}
+
 // ── Worker entry path bootstrap (must run before any producer/engine load) ──
 // The hf#677 worker_threads pools (`pngDecodeBlitWorkerPool`,
 // `shaderTransitionWorkerPool`) live in the producer package and try to
@@ -119,11 +140,15 @@ const subCommands = {
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
+  feedback: () => import("./commands/feedback.js").then((m) => m.default),
   telemetry: () => import("./commands/telemetry.js").then((m) => m.default),
   validate: () => import("./commands/validate.js").then((m) => m.default),
   snapshot: () => import("./commands/snapshot.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
   lambda: () => import("./commands/lambda.js").then((m) => m.default),
+  cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),
+  cloud: () => import("./commands/cloud.js").then((m) => m.default),
+  auth: () => import("./commands/auth.js").then((m) => m.default),
 };
 
 const main = defineCommand({
@@ -148,12 +173,26 @@ const hasJsonFlag = process.argv.includes("--json");
 // exit handler is synchronous-only).
 let _flush: (() => Promise<void>) | undefined;
 let _flushSync: (() => void) | undefined;
+let _trackCliError:
+  | ((props: {
+      error_name: string;
+      error_message: string;
+      stack_trace?: string;
+      command?: string;
+      kind: "uncaught_exception" | "unhandled_rejection" | "command_error";
+    }) => void)
+  | undefined;
+let _trackCommandResult:
+  | ((props: { command: string; success: boolean; exitCode: number; durationMs: number }) => void)
+  | undefined;
 let _printUpdateNotice: (() => void) | undefined;
 
 if (!isHelp && command !== "telemetry" && command !== "unknown") {
   import("./telemetry/index.js").then((mod) => {
     _flush = mod.flush;
     _flushSync = mod.flushSync;
+    _trackCliError = mod.trackCliError;
+    _trackCommandResult = mod.trackCommandResult;
     mod.showTelemetryNotice();
     mod.trackCommand(command);
     if (mod.shouldTrack()) mod.incrementCommandCount();
@@ -176,15 +215,61 @@ if (!isHelp && !hasJsonFlag && command !== "upgrade") {
   });
 }
 
-// Async flush for normal exit (beforeExit fires when the event loop drains)
-process.on("beforeExit", () => {
+const commandStart = Date.now();
+
+// Async flush for normal exit. `beforeExit` re-fires every time the
+// event loop drains, and the async `_flush()` itself schedules new
+// work — so a plain `on` listener would print the update notice (and
+// re-flush) once per drain (the user-reported double-print). `once`
+// detaches after first invocation, which is what we want for both.
+process.once("beforeExit", () => {
   _flush?.().catch(() => {});
   if (!hasJsonFlag) _printUpdateNotice?.();
 });
 
-// Sync flush for process.exit() calls (exit event only allows synchronous code)
-process.on("exit", () => {
+// Sync-only: exit handlers cannot await promises or drain microtasks.
+// _trackCommandResult / _trackCliError are captured references resolved
+// at init time, so they're callable synchronously here.
+process.on("exit", (code) => {
+  _trackCommandResult?.({
+    command,
+    success: code === 0 && !commandFailed,
+    exitCode: code,
+    durationMs: Date.now() - commandStart,
+  });
   _flushSync?.();
+});
+
+process.on("uncaughtException", (error) => {
+  if ((error as NodeJS.ErrnoException).code === "EPIPE") {
+    commandFailed = true;
+    process.exit(0);
+  }
+  commandFailed = true;
+  _trackCliError?.({
+    error_name: error.name,
+    error_message: error.message,
+    stack_trace: error.stack,
+    command,
+    kind: "uncaught_exception",
+  });
+  _flushSync?.();
+  process.exit(1);
+});
+
+// unhandledRejection does not call process.exit() — Node may continue
+// running if the rejection is non-fatal (e.g. a fire-and-forget promise).
+// The exit handler above will still fire with the real exit code.
+process.on("unhandledRejection", (reason) => {
+  commandFailed = true;
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  _trackCliError?.({
+    error_name: error.name,
+    error_message: error.message,
+    stack_trace: error.stack,
+    command,
+    kind: "unhandled_rejection",
+  });
 });
 
 // Lazy-load help renderer — avoids allocating help data on non-help invocations

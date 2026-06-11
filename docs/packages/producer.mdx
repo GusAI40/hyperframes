@@ -60,28 +60,26 @@ The producer uses a two-step API: create a render job configuration, then execut
 import { createRenderJob, executeRenderJob } from '@hyperframes/producer';
 
 const job = createRenderJob({
-  input: './my-video/index.html',
-  output: './output.mp4',
   fps: 30,
   quality: 'standard',
 });
 
-const result = await executeRenderJob(job);
+await executeRenderJob(job, './my-video', './output.mp4');
 ```
 
 ### Render Configuration
 
 ```typescript
-import type { RenderConfig } from '@hyperframes/producer';
+import { createRenderJob } from '@hyperframes/producer';
 
-const config: RenderConfig = {
-  fps: 30,                   // 24, 30, or 60
+const job = createRenderJob({
+  fps: 30,                   // integer, or { num: 30000, den: 1001 } for NTSC
   quality: 'standard',       // 'draft', 'standard', or 'high'
-  format: 'mp4',             // 'mp4' or 'webm' (WebM renders with transparency)
+  format: 'mp4',             // 'mp4', 'webm', 'mov', or 'png-sequence'
   workers: 4,                // Parallel render workers (1-8)
   useGpu: false,             // GPU-accelerated encoding
   debug: false,              // Debug logging
-};
+});
 ```
 
 #### WebM with Transparency
@@ -125,7 +123,7 @@ When `hdr: true`:
 - SDR DOM overlays are converted from sRGB → BT.2020 before being layered on top
 - Output uses `libx265` with `yuv420p10le` and HDR10 mastering / content-light-level metadata
 - `format` must be `'mp4'` — `'mov'` and `'webm'` fall back to SDR
-- HDR `<img>` support is **still images only**; animated HDR-tagged images use only the first frame
+- HDR `<img>` extraction support is **still images only**; animated GIF inputs are prepared as timeline-synced video before render
 
 For full details on source requirements, fallback rules, and verification, see [HDR Rendering](/guides/hdr).
 
@@ -219,6 +217,7 @@ The producer supports hardware-accelerated encoding for faster renders:
 | macOS | VideoToolbox | Auto-detected |
 | Linux | VAAPI | Auto-detected |
 | Intel | QSV | Auto-detected |
+| AMD on Windows | AMF | Auto-detected |
 
 When GPU encoding is enabled, Hyperframes detects the available FFmpeg hardware encoder automatically. To check your system's capabilities:
 

@@ -28,6 +28,7 @@
  */
 
 import { join } from "node:path";
+import { parseHTML } from "linkedom";
 import {
   type CaptureOptions,
   type CaptureSession,
@@ -40,6 +41,7 @@ import { fpsToNumber } from "@hyperframes/core";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import {
   discoverMediaFromBrowser,
+  discoverAudioVolumeAutomationFromTimeline,
   discoverVideoVisibilityFromTimeline,
   recompileWithResolutions,
   resolveCompositionDurations,
@@ -59,6 +61,12 @@ export interface ProbeStageInput {
   workDir: string;
   job: RenderJob;
   cfg: EngineConfig;
+  /**
+   * Capture-mode flag threaded from the orchestrator. The stage derives a
+   * local copy of `cfg` with this value applied to `forceScreenshot`
+   * before any engine call, so the caller-owned `cfg` is never mutated.
+   */
+  forceScreenshot: boolean;
   log: ProducerLogger;
   assertNotAborted: () => void;
   /** From compileStage. May be replaced via `recompileWithResolutions`. */
@@ -87,12 +95,30 @@ export interface ProbeStageResult {
   browserProbeMs: number;
 }
 
+export function hasScriptedAudioVolumeAutomation(html: string, audioCount: number): boolean {
+  if (audioCount <= 0) return false;
+
+  const { document } = parseHTML(html);
+  const scriptBodies = [...document.querySelectorAll("script")]
+    .map((script) => script.textContent ?? "")
+    .join("\n");
+  if (!scriptBodies) return false;
+
+  return (
+    /\.\s*volume\s*=/i.test(scriptBodies) ||
+    /\b(?:gsap|tl|timeline|tween)\s*\.\s*(?:to|fromTo|set)\s*\([\s\S]{0,2000}\bvolume\s*:/i.test(
+      scriptBodies,
+    )
+  );
+}
+
 export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageResult> {
   const {
     projectDir,
     workDir,
     job,
     cfg,
+    forceScreenshot,
     log,
     assertNotAborted,
     composition,
@@ -102,20 +128,36 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     deviceScaleFactor,
   } = input;
   let { compiled } = input;
+
+  const probeCfg: EngineConfig =
+    cfg.forceScreenshot === forceScreenshot ? cfg : { ...cfg, forceScreenshot };
+
   let fileServer: FileServerHandle | null = null;
   let probeSession: CaptureSession | null = null;
   let lastBrowserConsole: string[] = [];
 
   const probeStart = Date.now();
   const hasAutoStartVideos = compiled.html.includes("data-hf-auto-start");
+  const hasScriptedAudio = hasScriptedAudioVolumeAutomation(
+    compiled.html,
+    composition.audios.length,
+  );
   const needsBrowser =
-    composition.duration <= 0 || compiled.unresolvedCompositions.length > 0 || hasAutoStartVideos;
+    composition.duration <= 0 ||
+    compiled.unresolvedCompositions.length > 0 ||
+    hasAutoStartVideos ||
+    hasScriptedAudio;
 
   if (needsBrowser) {
     const reasons = [];
     if (composition.duration <= 0) reasons.push("root duration unknown");
     if (compiled.unresolvedCompositions.length > 0)
       reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
+    if (hasScriptedAudio) reasons.push("scripted audio volume");
+
+    log.info("Launching browser for composition probe...", {
+      reasons,
+    });
 
     fileServer = await createFileServer({
       projectDir,
@@ -133,19 +175,34 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       quality: needsAlpha ? undefined : 80,
       deviceScaleFactor,
     };
+    log.info("Browser launched, creating capture session...");
     probeSession = await createCaptureSession(
       fileServer.url,
       join(workDir, "probe"),
       captureOpts,
       null,
-      cfg,
+      probeCfg,
     );
-    await initializeSession(probeSession);
+    log.info("Waiting for composition to initialize...");
+    const initStart = Date.now();
+    const heartbeat = setInterval(() => {
+      const elapsed = ((Date.now() - initStart) / 1000).toFixed(1);
+      log.info(`Still waiting for browser initialization... (${elapsed}s elapsed)`);
+    }, 30_000);
+    try {
+      await initializeSession(probeSession);
+    } finally {
+      clearInterval(heartbeat);
+    }
+    log.info("Composition ready", {
+      initMs: Date.now() - initStart,
+    });
     assertNotAborted();
     lastBrowserConsole = probeSession.browserConsoleBuffer;
 
     // Discover root composition duration
     if (composition.duration <= 0) {
+      log.info("Discovering composition duration...");
       const discoveredDuration = await getCompositionDuration(probeSession);
       assertNotAborted();
       log.info("Probed composition duration from browser", {
@@ -183,6 +240,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     }
 
     // Discover media elements from browser DOM (catches dynamically-set src)
+    log.info("Discovering media assets from browser DOM...");
     const browserMedia = await discoverMediaFromBrowser(probeSession.page);
     assertNotAborted();
     if (browserMedia.length > 0) {
@@ -293,9 +351,36 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       }
     }
 
+    if (composition.audios.length > 0) {
+      log.info("Discovering audio volume automation...", {
+        audioCount: composition.audios.length,
+      });
+      const automation = await discoverAudioVolumeAutomationFromTimeline(
+        probeSession.page,
+        composition.audios.map((audio) => audio.id),
+        composition.duration,
+        fpsToNumber(job.config.fps),
+      );
+      assertNotAborted();
+      if (automation.length > 0) {
+        const byId = new Map(automation.map((entry) => [entry.id, entry.keyframes]));
+        for (const audio of composition.audios) {
+          const keyframes = byId.get(audio.id);
+          if (!keyframes || keyframes.length === 0) continue;
+          audio.volumeKeyframes = keyframes;
+          log.info(`[Probe] Runtime audio volume automation: ${audio.id}`, {
+            keyframeCount: keyframes.length,
+          });
+        }
+      }
+    }
+
     // Runtime video discovery: for videos with auto-injected timing (data-hf-auto-start),
     // seek the GSAP timeline to find actual scene visibility windows and override start/end.
     if (composition.videos.length > 0) {
+      log.info("Discovering video visibility windows...", {
+        videoCount: composition.videos.length,
+      });
       const visibilityWindows = await discoverVideoVisibilityFromTimeline(
         probeSession.page,
         composition.duration,

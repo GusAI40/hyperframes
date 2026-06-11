@@ -1,10 +1,16 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { usePlayerStore } from "../player";
 import { FONT_EXT } from "../utils/mediaTypes";
-import { applyPatchByTarget } from "../utils/sourcePatcher";
+import type { PatchOperation } from "../utils/sourcePatcher";
+import { trackStudioEvent } from "../utils/studioTelemetry";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
-import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
+import {
+  buildDomEditPatchTarget,
+  getDomEditTargetKey,
+  readHfId,
+  type DomEditSelection,
+} from "../components/editor/domEditing";
 import {
   applyStudioPathOffset,
   applyStudioBoxSize,
@@ -34,6 +40,37 @@ import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditO
 import type { EditHistoryKind } from "../utils/editHistory";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 
+// ── Helpers ──
+
+type TimelineLike = { getChildren?: (nested: boolean) => Array<{ targets?: () => Element[] }> };
+
+function isElementGsapTargeted(iframe: HTMLIFrameElement | null, element: HTMLElement): boolean {
+  if (!iframe?.contentWindow) return false;
+  let timelines: Record<string, TimelineLike> | undefined;
+  try {
+    timelines = (iframe.contentWindow as Window & { __timelines?: Record<string, TimelineLike> })
+      .__timelines;
+  } catch {
+    return false;
+  }
+  if (!timelines) return false;
+  const id = element.id;
+  for (const tl of Object.values(timelines)) {
+    if (!tl?.getChildren) continue;
+    try {
+      for (const child of tl.getChildren(true)) {
+        if (!child.targets) continue;
+        for (const t of child.targets()) {
+          if (t === element || (id && t.id === id)) return true;
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
+
 // ── Types ──
 
 interface RecordEditInput {
@@ -45,7 +82,7 @@ interface RecordEditInput {
 
 export type PersistDomEditOperations = (
   selection: DomEditSelection,
-  operations: Parameters<typeof applyPatchByTarget>[2][],
+  operations: PatchOperation[],
   options?: {
     label?: string;
     coalesceKey?: string;
@@ -80,7 +117,7 @@ export interface UseDomEditCommitsParams {
   buildDomSelectionFromTarget: (
     target: HTMLElement,
     options?: { preferClipAncestor?: boolean },
-  ) => DomEditSelection | null;
+  ) => Promise<DomEditSelection | null>;
 }
 
 // ── Hook ──
@@ -127,6 +164,9 @@ export function useDomEditCommits({
     [fileTree, projectId, importedFontAssetsRef],
   );
 
+  const reportedUnresolvableRef = useRef(new Set<string>());
+
+  // fallow-ignore-next-line complexity
   const persistDomEditOperations: PersistDomEditOperations = useCallback(
     async (selection, operations, options) => {
       const pid = projectIdRef.current;
@@ -134,50 +174,88 @@ export function useDomEditCommits({
       if (options?.shouldSave && !options.shouldSave()) return;
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
-      const response = await fetch(`/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`);
-      if (!response.ok) {
-        throw new Error(`Failed to read ${targetPath}`);
-      }
 
-      const data = (await response.json()) as { content?: string };
-      const originalContent = data.content;
+      const readResponse = await fetch(
+        `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+      );
+      if (!readResponse.ok) throw new Error(`Failed to read ${targetPath}`);
+      const readData = (await readResponse.json()) as { content?: string };
+      const originalContent = readData.content;
       if (typeof originalContent !== "string") {
         throw new Error(`Missing file contents for ${targetPath}`);
       }
 
-      let patchedContent = originalContent;
-      for (const operation of operations) {
-        patchedContent = applyPatchByTarget(patchedContent, selection, operation);
-      }
-      if (options?.prepareContent) {
-        patchedContent = options.prepareContent(patchedContent, targetPath);
-      }
       if (options?.shouldSave && !options.shouldSave()) return;
 
-      if (patchedContent === originalContent) {
-        throw new Error(`Unable to patch ${selection.selector ?? selection.id ?? "selection"}`);
+      const patchTarget = buildDomEditPatchTarget(selection);
+
+      // Mark the save timestamp before the file write so the SSE file-change
+      // handler suppresses the reload even if the event arrives before the
+      // response (the server writes the file and emits SSE during the fetch).
+      domEditSaveTimestampRef.current = Date.now();
+
+      const patchResponse = await fetch(
+        `/api/projects/${pid}/file-mutations/patch-element/${encodeURIComponent(targetPath)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: patchTarget, operations }),
+        },
+      );
+      if (!patchResponse.ok) throw new Error(`Failed to patch ${targetPath}`);
+
+      const patchData = (await patchResponse.json()) as {
+        ok?: boolean;
+        changed?: boolean;
+        matched?: boolean;
+        content?: string;
+      };
+
+      if (!patchData.changed) {
+        if (patchData.matched === false) {
+          const targetKey = selection.selector ?? selection.id ?? "selection";
+          if (!reportedUnresolvableRef.current.has(targetKey)) {
+            reportedUnresolvableRef.current.add(targetKey);
+            trackStudioEvent("save_skipped_unresolvable", {
+              target_id: selection.id ?? undefined,
+              target_selector: selection.selector ?? undefined,
+              target_source_file: selection.sourceFile ?? undefined,
+              composition: activeCompPath ?? undefined,
+            });
+            console.warn(
+              `[studio] Element not found in source: ${targetKey}. ` +
+                "This element may be generated at runtime and cannot be persisted.",
+            );
+          }
+        }
+        return;
       }
 
-      await saveProjectFilesWithHistory({
-        projectId: pid,
+      const patchedContent =
+        typeof patchData.content === "string" ? patchData.content : originalContent;
+
+      let finalContent = patchedContent;
+      if (options?.prepareContent) {
+        finalContent = options.prepareContent(patchedContent, targetPath);
+        if (finalContent !== patchedContent) {
+          await writeProjectFile(targetPath, finalContent);
+        }
+      }
+
+      await editHistory.recordEdit({
         label: options?.label ?? "Edit layer",
         kind: "manual",
         coalesceKey: options?.coalesceKey,
-        files: { [targetPath]: patchedContent },
-        readFile: async () => originalContent,
-        writeFile: writeProjectFile,
-        recordEdit: editHistory.recordEdit,
+        files: { [targetPath]: { before: originalContent, after: finalContent } },
       });
 
-      if (options?.skipRefresh) {
-        domEditSaveTimestampRef.current = Date.now();
-      } else {
+      if (!options?.skipRefresh) {
         reloadPreview();
       }
     },
     [
       activeCompPath,
-      editHistory.recordEdit,
+      editHistory,
       writeProjectFile,
       projectIdRef,
       domEditSaveTimestampRef,
@@ -209,10 +287,11 @@ export function useDomEditCommits({
 
   // ── Position patch helper ──
 
+  // fallow-ignore-next-line complexity
   const commitPositionPatchToHtml = useCallback(
     (
       selection: DomEditSelection,
-      patches: Parameters<typeof applyPatchByTarget>[2][],
+      patches: PatchOperation[],
       options: { label: string; coalesceKey: string; skipRefresh?: boolean },
     ) => {
       void queueDomEditSave(async () => {
@@ -221,9 +300,18 @@ export function useDomEditCommits({
           coalesceKey: options.coalesceKey,
           skipRefresh: options.skipRefresh ?? true,
         });
+        // fallow-ignore-next-line complexity
       }).catch((error) => {
         const message = error instanceof Error ? error.message : "Failed to save position";
         showToast(message);
+        trackStudioEvent("save_failure", {
+          source: "dom_edit",
+          label: options.label,
+          error_message: message,
+          target_id: selection.id ?? undefined,
+          target_selector: selection.selector ?? undefined,
+          target_source_file: selection.sourceFile ?? undefined,
+        });
       });
     },
     [persistDomEditOperations, queueDomEditSave, showToast],
@@ -234,12 +322,13 @@ export function useDomEditCommits({
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
       applyStudioPathOffset(selection.element, next);
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
       commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
         label: "Move layer",
         coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, previewIframeRef],
   );
 
   const handleDomGroupPathOffsetCommit = useCallback(
@@ -251,35 +340,38 @@ export function useDomEditCommits({
         .join(":");
       for (const { selection, next } of updates) {
         applyStudioPathOffset(selection.element, next);
+        if (isElementGsapTargeted(previewIframeRef.current, selection.element)) continue;
         commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
           label: `Move ${updates.length} layers`,
           coalesceKey: `group-path-offset:${coalesceKey}`,
         });
       }
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, previewIframeRef],
   );
 
   const handleDomBoxSizeCommit = useCallback(
     (selection: DomEditSelection, next: { width: number; height: number }) => {
       applyStudioBoxSize(selection.element, next);
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
       commitPositionPatchToHtml(selection, buildBoxSizePatches(selection.element), {
         label: "Resize layer box",
         coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, previewIframeRef],
   );
 
   const handleDomRotationCommit = useCallback(
     (selection: DomEditSelection, next: { angle: number }) => {
       applyStudioRotation(selection.element, next);
+      if (isElementGsapTargeted(previewIframeRef.current, selection.element)) return;
       commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
         label: "Rotate layer",
         coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
       });
     },
-    [commitPositionPatchToHtml],
+    [commitPositionPatchToHtml, previewIframeRef],
   );
 
   const handleDomManualEditsReset = useCallback(
@@ -305,6 +397,7 @@ export function useDomEditCommits({
 
   // ── Motion commits (HTML-attribute–backed) ──
 
+  // fallow-ignore-next-line complexity
   const handleDomMotionCommit = useCallback(
     (
       selection: DomEditSelection,
@@ -331,6 +424,7 @@ export function useDomEditCommits({
     [commitPositionPatchToHtml, previewIframeRef, refreshDomEditSelectionFromPreview],
   );
 
+  // fallow-ignore-next-line complexity
   const handleDomMotionClear = useCallback(
     (selection: DomEditSelection) => {
       const clearPatches = buildClearMotionPatches(selection.element);
@@ -359,6 +453,7 @@ export function useDomEditCommits({
     [commitPositionPatchToHtml, previewIframeRef, refreshDomEditSelectionFromPreview],
   );
 
+  // fallow-ignore-next-line complexity
   const handleDomEditElementDelete = useCallback(
     async (selection: DomEditSelection) => {
       const pid = projectIdRef.current;
@@ -377,19 +472,12 @@ export function useDomEditCommits({
         if (typeof originalContent !== "string")
           throw new Error(`Missing file contents for ${targetPath}`);
 
-        const patchTarget: { id?: string; selector?: string; selectorIndex?: number } = selection.id
-          ? {
-              id: selection.id,
-              selector: selection.selector,
-              selectorIndex: selection.selectorIndex,
-            }
-          : selection.selector
-            ? { selector: selection.selector, selectorIndex: selection.selectorIndex }
-            : ({} as never);
-        if (!patchTarget.id && !patchTarget.selector) {
+        const patchTarget = buildDomEditPatchTarget(selection);
+        if (!patchTarget.id && !patchTarget.selector && !patchTarget.hfId) {
           throw new Error("Selected element has no patchable target");
         }
 
+        domEditSaveTimestampRef.current = Date.now();
         const removeResponse = await fetch(
           `/api/projects/${pid}/file-mutations/remove-element/${encodeURIComponent(targetPath)}`,
           {
@@ -403,8 +491,6 @@ export function useDomEditCommits({
         const removeData = (await removeResponse.json()) as { changed?: boolean; content?: string };
         const patchedContent =
           typeof removeData.content === "string" ? removeData.content : originalContent;
-
-        domEditSaveTimestampRef.current = Date.now();
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Delete element",
@@ -436,6 +522,55 @@ export function useDomEditCommits({
     ],
   );
 
+  const handleDomZIndexReorderCommit = useCallback(
+    (
+      entries: Array<{
+        element: HTMLElement;
+        zIndex: number;
+        id?: string;
+        selector?: string;
+        selectorIndex?: number;
+        sourceFile: string;
+      }>,
+    ) => {
+      if (entries.length === 0) return;
+      const coalesceKey = `z-reorder:${entries.map((e) => e.id ?? e.selector ?? e.element.getAttribute("data-hf-id") ?? "el").join(":")}`;
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        entry.element.style.zIndex = String(entry.zIndex);
+        const patches: Array<{ type: "inline-style"; property: string; value: string }> = [
+          { type: "inline-style", property: "z-index", value: String(entry.zIndex) },
+        ];
+        try {
+          const win = entry.element.ownerDocument?.defaultView;
+          if (win && win.getComputedStyle(entry.element).position === "static") {
+            entry.element.style.position = "relative";
+            patches.push({ type: "inline-style", property: "position", value: "relative" });
+          }
+        } catch {
+          /* cross-origin or detached — skip */
+        }
+        commitPositionPatchToHtml(
+          {
+            element: entry.element,
+            id: entry.id ?? null,
+            hfId: readHfId(entry.element),
+            selector: entry.selector,
+            selectorIndex: entry.selectorIndex,
+            sourceFile: entry.sourceFile,
+          } as unknown as DomEditSelection,
+          patches,
+          {
+            label: "Reorder layers",
+            coalesceKey,
+            skipRefresh: i < entries.length - 1,
+          },
+        );
+      }
+    },
+    [commitPositionPatchToHtml],
+  );
+
   return {
     resolveImportedFontAsset,
     handleDomStyleCommit,
@@ -454,5 +589,6 @@ export function useDomEditCommits({
     handleDomMotionCommit,
     handleDomMotionClear,
     handleDomEditElementDelete,
+    handleDomZIndexReorderCommit,
   };
 }

@@ -33,6 +33,7 @@
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readSync,
   closeSync,
@@ -44,10 +45,11 @@ import {
   appendFileSync,
 } from "fs";
 import { parseHTML } from "linkedom";
-import { type CanvasResolution, type Fps } from "@hyperframes/core";
+import { type CanvasResolution, type Fps, type FpsInput, toFps } from "@hyperframes/core";
 import {
   type EngineConfig,
   resolveConfig,
+  type ExtractionResult,
   type ExtractionPhaseBreakdown,
   type HdrTransfer,
   closeCaptureSession,
@@ -74,6 +76,8 @@ import {
   convertTransfer,
   type ElementStackingInfo,
   type HfTransitionMeta,
+  getSystemTotalMb,
+  LOW_MEMORY_TOTAL_MB_THRESHOLD,
 } from "@hyperframes/engine";
 import { join, dirname, resolve } from "path";
 import { randomUUID } from "crypto";
@@ -91,16 +95,27 @@ import {
   createMemorySampler,
   type MemorySampler,
   updateJobStatus,
+  writeFileExclusiveSync,
 } from "./render/shared.js";
 import { buildRenderErrorDetails, cleanupRenderResources, safeCleanup } from "./render/cleanup.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { resolveEffectiveHdrMode } from "./render/hdrMode.js";
 import { buildRenderPerfSummary } from "./render/perfSummary.js";
+import { getCaptureStageBrowserConsole } from "./render/captureStageError.js";
 import {
   type CaptureCalibrationSample,
   type CaptureCostEstimate,
   resolveRenderWorkerCount,
   runCaptureCalibration,
 } from "./render/captureCost.js";
+import {
+  computeCompositionObservabilityHash,
+  RenderObservabilityRecorder,
+  observeRenderStage,
+  type RenderCaptureObservability,
+  type RenderExtractionObservability,
+  type RenderObservabilitySummary,
+} from "./render/observability.js";
 import { type HdrPerfCollector, type HdrPerfSummary, addHdrTiming } from "./render/hdrPerf.js";
 import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
@@ -139,6 +154,30 @@ function sampleDirectoryBytes(dir: string): number {
     }
   }
   return total;
+}
+
+// fallow-ignore-next-line complexity
+function summarizeExtractionObservability(
+  extractionResult: ExtractionResult | null,
+  videoCount: number,
+): RenderExtractionObservability {
+  const extracted = extractionResult?.extracted ?? [];
+  const totalFramesExtracted = extractionResult?.totalFramesExtracted ?? 0;
+  const maxFramesPerVideo = extracted.reduce((max, item) => Math.max(max, item.totalFrames), 0);
+  const phaseBreakdown = extractionResult?.phaseBreakdown;
+  return {
+    videoCount,
+    extractedVideoCount: extracted.length,
+    totalFramesExtracted,
+    maxFramesPerVideo,
+    avgFramesPerExtractedVideo:
+      extracted.length > 0 ? Math.round(totalFramesExtracted / extracted.length) : undefined,
+    vfrProbeMs: phaseBreakdown?.vfrProbeMs,
+    vfrPreflightMs: phaseBreakdown?.vfrPreflightMs,
+    vfrPreflightCount: phaseBreakdown?.vfrPreflightCount,
+    cacheHits: phaseBreakdown?.cacheHits,
+    cacheMisses: phaseBreakdown?.cacheMisses,
+  };
 }
 
 // Diagnostic helpers used by the HDR layered compositor when KEEP_TEMP=1
@@ -222,6 +261,10 @@ export interface RenderConfig {
    * - `"mov"`: ProRes 4444 + `yuva444p10le` → **true alpha channel +
    *   10-bit color**. Sized for editor ingest (Premiere, Final Cut Pro,
    *   DaVinci Resolve), not direct web playback. Audio is muxed as AAC.
+   * - `"gif"`: animated GIF encoded from captured frames with a two-pass
+   *   FFmpeg palette (`palettegen` + `paletteuse`). Use for PRs, READMEs,
+   *   and docs where inline autoplay matters more than file size. No audio
+   *   stream and no alpha channel.
    * - `"png-sequence"`: a directory of zero-padded RGBA PNGs
    *   (`frame_000001.png` …). Lossless alpha, largest on disk, no muxed
    *   audio (an `audio.aac` sidecar is written alongside the PNGs when
@@ -239,7 +282,9 @@ export interface RenderConfig {
    * not paint a fullscreen `body` / `#root` background in their
    * compositions when targeting alpha output.
    */
-  format?: "mp4" | "webm" | "mov" | "png-sequence";
+  format?: "mp4" | "webm" | "mov" | "png-sequence" | "gif";
+  /** GIF Netscape loop count. 0 means infinite looping. Only used with `format: "gif"`. */
+  gifLoop?: number;
   workers?: number;
   useGpu?: boolean;
   debug?: boolean;
@@ -305,6 +350,7 @@ export interface RenderPerfSummary {
     reasons: string[];
   };
   captureAttempts?: CaptureAttemptSummary[];
+  observability?: RenderObservabilitySummary;
   /**
    * Peak resident set size (RSS) observed during the render, in MiB.
    *
@@ -397,6 +443,7 @@ export interface RenderJob {
     browserConsoleTail?: string[];
     perfStages?: Record<string, number>;
     hdrDiagnostics?: HdrDiagnostics;
+    observability?: RenderObservabilitySummary;
   };
 }
 
@@ -566,7 +613,7 @@ export function getNextRetryWorkerCount(currentWorkers: number): number {
 }
 
 export function isRecoverableParallelCaptureError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = normalizeErrorMessage(error);
   return (
     message.includes("[Parallel] Capture failed") &&
     /Runtime\.callFunctionOn timed out|HeadlessExperimental\.beginFrame timed out|Waiting failed|timeout exceeded|timed out|Navigation timeout|Protocol error|Target closed/i.test(
@@ -1310,7 +1357,7 @@ export async function compositeHdrFrame(
           const after = countNonZeroRgb48(canvas);
           const dumpName = `frame_${String(debugFrameIndex).padStart(4, "0")}_layer_${String(layerIdx).padStart(2, "0")}_dom.png`;
           const dumpPath = join(debugDumpDir, dumpName);
-          writeFileSync(dumpPath, domPng);
+          writeFileExclusiveSync(dumpPath, domPng);
           log.info("[diag] dom layer blit", {
             frame: debugFrameIndex,
             layerIdx,
@@ -1343,10 +1390,12 @@ export async function compositeHdrFrame(
   }
 }
 
-export function createRenderJob(config: RenderConfig): RenderJob {
+export type RenderConfigInput = Omit<RenderConfig, "fps"> & { fps: FpsInput };
+
+export function createRenderJob(config: RenderConfigInput): RenderJob {
   return {
     id: randomUUID(),
-    config,
+    config: { ...config, fps: toFps(config.fps) },
     status: "queued",
     progress: 0,
     currentStage: "Queued",
@@ -1385,6 +1434,7 @@ export function shouldUseStreamingEncode(
 ): boolean {
   if (!cfg.enableStreamingEncode) return false;
   if (outputFormat === "png-sequence") return false;
+  if (outputFormat === "gif") return false;
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return false;
   if (durationSeconds > cfg.streamingEncodeMaxDurationSeconds) return false;
   return workerCount === 1;
@@ -1445,9 +1495,11 @@ export async function executeRenderJob(
     ? resolve(process.env.PRODUCER_RENDERS_DIR, "..")
     : resolve(moduleDir, "../..");
   const debugDir = join(producerRoot, ".debug");
+  const outputDir = dirname(outputPath);
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   const workDir = job.config.debug
     ? join(debugDir, job.id)
-    : join(dirname(outputPath), `work-${job.id}`);
+    : mkdtempSync(join(outputDir, `work-${job.id}-`));
   const pipelineStart = Date.now();
   const log = job.config.logger ?? defaultLogger;
   let fileServer: FileServerHandle | null = null;
@@ -1462,10 +1514,16 @@ export async function executeRenderJob(
   let hdrPerf: HdrPerfCollector | undefined;
   const perfOutputPath = join(workDir, "perf-summary.json");
   const cfg = { ...(job.config.producerConfig ?? resolveConfig()) };
+  const observability = new RenderObservabilityRecorder({
+    pipelineStartMs: pipelineStart,
+    log,
+    renderJobId: job.id,
+  });
   const outputFormat = (job.config.format ?? "mp4") as NonNullable<RenderConfig["format"]>;
   const isWebm = outputFormat === "webm";
   const isMov = outputFormat === "mov";
   const isPngSequence = outputFormat === "png-sequence";
+  const isGif = outputFormat === "gif";
   const needsAlpha = isWebm || isMov || isPngSequence;
   // `forceScreenshot` is resolved exactly once inside `compileStage` (alpha
   // output + composition `renderModeHints` are folded together there) and
@@ -1476,6 +1534,22 @@ export async function executeRenderJob(
   // the rest of the pipeline.
   const enableChunkedEncode = cfg.enableChunkedEncode;
   const chunkedEncodeSize = cfg.chunkSizeFrames;
+  const captureObservability: RenderCaptureObservability = {
+    forceScreenshot: Boolean(cfg.forceScreenshot),
+    captureMode: cfg.forceScreenshot ? "screenshot" : "beginframe",
+    browserGpuMode: cfg.browserGpuMode,
+    protocolTimeoutMs: cfg.protocolTimeout,
+    pageNavigationTimeoutMs: cfg.pageNavigationTimeout,
+    playerReadyTimeoutMs: cfg.playerReadyTimeout,
+  };
+  let extractionObservability: RenderExtractionObservability | undefined;
+  let compositionHash: string | undefined;
+  const updateCaptureObservability = (patch: Partial<RenderCaptureObservability>): void => {
+    Object.assign(captureObservability, patch);
+    captureObservability.captureMode = captureObservability.forceScreenshot
+      ? "screenshot"
+      : "beginframe";
+  };
   // Declared outside the try so `finally` can stop the interval, but
   // the sampler is created INSIDE the try so a synchronous throw
   // between declaration and the try-block (currently impossible, but
@@ -1492,6 +1566,32 @@ export async function executeRenderJob(
 
     job.startedAt = new Date();
     assertNotAborted();
+
+    log.info("[Render] Pipeline started", {
+      platform: process.platform,
+      arch: process.arch,
+      nodeVersion: process.version,
+      fps: job.config.fps,
+      format: outputFormat,
+      quality: job.config.quality,
+      browserGpuMode: cfg.browserGpuMode,
+      forceScreenshot: cfg.forceScreenshot,
+      protocolTimeout: cfg.protocolTimeout,
+      browserTimeout: cfg.browserTimeout,
+      pageNavigationTimeout: cfg.pageNavigationTimeout,
+      playerReadyTimeout: cfg.playerReadyTimeout,
+    });
+    observability.checkpoint("pipeline", "started", {
+      format: outputFormat,
+      quality: job.config.quality,
+      browserGpuMode: cfg.browserGpuMode,
+      forceScreenshot: Boolean(cfg.forceScreenshot),
+      protocolTimeoutMs: cfg.protocolTimeout,
+      pageNavigationTimeoutMs: cfg.pageNavigationTimeout,
+      playerReadyTimeoutMs: cfg.playerReadyTimeout,
+      requestedWorkers: job.config.workers ?? "auto",
+    });
+
     if (!existsSync(workDir)) mkdirSync(workDir, { recursive: true });
 
     if (job.config.debug) {
@@ -1538,18 +1638,21 @@ export async function executeRenderJob(
     const stage1Start = Date.now();
     updateJobStatus(job, "preprocessing", "Compiling composition", 5, onProgress);
 
-    const compileResult = await runCompileStage({
-      projectDir,
-      workDir,
-      htmlPath,
-      entryFile,
-      job,
-      cfg,
-      needsAlpha,
-      log,
-      assertNotAborted,
-    });
+    const compileResult = await observeRenderStage(observability, "compile", { needsAlpha }, () =>
+      runCompileStage({
+        projectDir,
+        workDir,
+        htmlPath,
+        entryFile,
+        job,
+        cfg,
+        needsAlpha,
+        log,
+        assertNotAborted,
+      }),
+    );
     let compiled = compileResult.compiled;
+    compositionHash = computeCompositionObservabilityHash(compiled.html);
     const composition = compileResult.composition;
     const { deviceScaleFactor, outputWidth, outputHeight } = compileResult;
     const { width, height } = composition;
@@ -1561,22 +1664,65 @@ export async function executeRenderJob(
     // via the explicit `forceScreenshot` parameter rather than reading
     // `cfg.forceScreenshot` directly.
     let captureForceScreenshot = compileResult.forceScreenshot;
-
-    const probeResult = await runProbeStage({
-      projectDir,
-      workDir,
-      job,
-      cfg,
-      log,
-      assertNotAborted,
-      compiled,
-      composition,
+    updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
+    observability.checkpoint("compile", "composition metadata resolved", {
       width,
       height,
-      needsAlpha,
+      videoCount: composition.videos.length,
+      audioCount: composition.audios.length,
+      imageCount: composition.images.length,
       deviceScaleFactor,
+      forceScreenshot: captureForceScreenshot,
+      compositionHash,
     });
+
+    // Low-memory safe profile: on memory-constrained hosts the default render
+    // shape (probe Chrome + a throwaway calibration Chrome + N capture
+    // workers) thrashes — concurrent Chrome instances drive memory pressure
+    // that slows every CDP call and spikes V8 GC, surfacing as the slow/stuck
+    // renders in heygen-com/hyperframes#1218 / #1219. Collapse to the cheapest
+    // shape: skip auto-worker calibration (the gate below), pin to a single
+    // worker (resolved below), and prefer screenshot capture over BeginFrame
+    // (which avoids the BeginFrame protocol-timeout → relaunch churn on slow
+    // hardware). Auto-detected from total RAM; opt out with
+    // `--no-low-memory-mode` / PRODUCER_LOW_MEMORY_MODE=false. An explicit
+    // `--workers N` still gets screenshot capture + skipped calibration; only
+    // the single-worker pin is bypassed.
+    if (cfg.lowMemoryMode) {
+      captureForceScreenshot = true;
+      updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
+      log.info(
+        "[Render] Low-memory render profile active — " +
+          "screenshot capture, auto-worker calibration skipped" +
+          (job.config.workers === undefined ? ", pinned to 1 worker" : "") +
+          ". Override with --no-low-memory-mode or PRODUCER_LOW_MEMORY_MODE=false.",
+        { totalMemMb: getSystemTotalMb(), thresholdMb: LOW_MEMORY_TOTAL_MB_THRESHOLD },
+      );
+    }
+
+    const probeResult = await observeRenderStage(
+      observability,
+      "browser_probe",
+      { forceScreenshot: captureForceScreenshot },
+      () =>
+        runProbeStage({
+          projectDir,
+          workDir,
+          job,
+          cfg,
+          forceScreenshot: captureForceScreenshot,
+          log,
+          assertNotAborted,
+          compiled,
+          composition,
+          width,
+          height,
+          needsAlpha,
+          deviceScaleFactor,
+        }),
+    );
     compiled = probeResult.compiled;
+    compositionHash = computeCompositionObservabilityHash(compiled.html);
     fileServer = probeResult.fileServer;
     probeSession = probeResult.probeSession;
     lastBrowserConsole = probeResult.lastBrowserConsole;
@@ -1587,20 +1733,32 @@ export async function executeRenderJob(
     const totalFrames = probeResult.totalFrames;
     perfStages.browserProbeMs = probeResult.browserProbeMs;
     perfStages.compileMs = Date.now() - stage1Start;
+    observability.checkpoint("browser_probe", "duration resolved", {
+      durationSeconds: probeResult.duration,
+      totalFrames,
+      compositionHash,
+    });
 
     // ── Stage 2: Video frame extraction ─────────────────────────────────
     updateJobStatus(job, "preprocessing", "Extracting video frames", 10, onProgress);
 
     const compiledDir = join(workDir, "compiled");
-    const extractResult = await runExtractVideosStage({
-      projectDir,
-      compiledDir,
-      job,
-      cfg,
-      composition,
-      abortSignal,
-      assertNotAborted,
-    });
+    const extractResult = await observeRenderStage(
+      observability,
+      "video_extract",
+      { videoCount: composition.videos.length },
+      () =>
+        runExtractVideosStage({
+          projectDir,
+          compiledDir,
+          job,
+          cfg,
+          log,
+          composition,
+          abortSignal,
+          assertNotAborted,
+        }),
+    );
     const {
       extractionResult,
       frameLookup,
@@ -1614,6 +1772,21 @@ export async function executeRenderJob(
       imageColorSpaces,
     } = extractResult;
     perfStages.videoExtractMs = extractResult.videoExtractMs;
+    extractionObservability = summarizeExtractionObservability(
+      extractionResult,
+      composition.videos.length,
+    );
+    observability.checkpoint("video_extract", "frames resolved", {
+      videoCount: extractionObservability.videoCount,
+      extractedVideoCount: extractionObservability.extractedVideoCount,
+      totalFramesExtracted: extractionObservability.totalFramesExtracted,
+      maxFramesPerVideo: extractionObservability.maxFramesPerVideo,
+      avgFramesPerExtractedVideo: extractionObservability.avgFramesPerExtractedVideo ?? null,
+      vfrPreflightCount: extractionObservability.vfrPreflightCount ?? null,
+      vfrPreflightMs: extractionObservability.vfrPreflightMs ?? null,
+      cacheHits: extractionObservability.cacheHits ?? null,
+      cacheMisses: extractionObservability.cacheMisses ?? null,
+    });
 
     // ── HDR auto-detection ──────────────────────────────────────────────
     const effectiveHdr = resolveEffectiveHdrMode({
@@ -1623,19 +1796,31 @@ export async function executeRenderJob(
       imageColorSpaces,
       log,
     });
+    observability.checkpoint("hdr_detection", "resolved", {
+      requestedHdrMode: job.config.hdrMode ?? "auto",
+      effectiveHdr: effectiveHdr ? effectiveHdr.transfer : "sdr",
+      nativeHdrVideoCount: nativeHdrVideoIds.size,
+      nativeHdrImageCount: nativeHdrImageIds.size,
+    });
 
     // ── Stage 3: Audio processing ───────────────────────────────────────
     updateJobStatus(job, "preprocessing", "Processing audio tracks", 20, onProgress);
 
-    const audioResult = await runAudioStage({
-      projectDir,
-      workDir,
-      compiledDir,
-      duration: job.duration,
-      audios: composition.audios,
-      abortSignal,
-      assertNotAborted,
-    });
+    const audioResult = await observeRenderStage(
+      observability,
+      "audio_process",
+      { audioCount: composition.audios.length },
+      () =>
+        runAudioStage({
+          projectDir,
+          workDir,
+          compiledDir,
+          duration: probeResult.duration,
+          audios: composition.audios,
+          abortSignal,
+          assertNotAborted,
+        }),
+    );
     const { audioOutputPath, hasAudio } = audioResult;
     perfStages.audioProcessMs = audioResult.audioProcessMs;
 
@@ -1647,13 +1832,26 @@ export async function executeRenderJob(
     // The page-side compositing stub is injected later (after hasHdrContent
     // is known) via addPreHeadScript — see usePageSideCompositingForTransitions.
     if (!fileServer) {
-      fileServer = await createFileServer({
-        projectDir,
-        compiledDir: join(workDir, "compiled"),
-        port: 0,
-        preHeadScripts: [VIRTUAL_TIME_SHIM],
-      });
-      assertNotAborted();
+      const fileServerStart = observability.stageStart("file_server", { reused: false });
+      try {
+        fileServer = await createFileServer({
+          projectDir,
+          compiledDir: join(workDir, "compiled"),
+          port: 0,
+          preHeadScripts: [VIRTUAL_TIME_SHIM],
+        });
+        assertNotAborted();
+        observability.stageEnd("file_server", fileServerStart);
+      } catch (error) {
+        observability.stageError("file_server", fileServerStart, error);
+        throw error;
+      }
+    } else {
+      observability.checkpoint("file_server", "reused probe file server");
+    }
+    const activeFileServer = fileServer;
+    if (!activeFileServer) {
+      throw new Error("File server failed to initialize before frame capture");
     }
 
     const framesDir = join(workDir, "captured-frames");
@@ -1697,28 +1895,57 @@ export async function executeRenderJob(
         }
       | undefined;
 
-    if (job.config.workers === undefined && totalFrames >= 60) {
-      const outcome = await runCaptureCalibration({
-        cfg,
-        fileServer,
-        workDir,
-        log,
-        job,
-        totalFrames,
-        forceScreenshot: captureForceScreenshot,
-        probeSession,
-        buildCaptureOptions,
-        createRenderVideoFrameInjector,
-        assertNotAborted,
-      });
+    const htmlInCanvasDetected = compiled.renderModeHints.reasons.some(
+      (r) => r.code === "htmlInCanvas",
+    );
+    if (
+      job.config.workers === undefined &&
+      totalFrames >= 60 &&
+      !htmlInCanvasDetected &&
+      !cfg.lowMemoryMode
+    ) {
+      const outcome = await observeRenderStage(
+        observability,
+        "capture_calibration",
+        { forceScreenshot: captureForceScreenshot },
+        () =>
+          runCaptureCalibration({
+            cfg,
+            fileServer: activeFileServer,
+            workDir,
+            log,
+            job,
+            totalFrames,
+            forceScreenshot: captureForceScreenshot,
+            probeSession,
+            buildCaptureOptions,
+            createRenderVideoFrameInjector,
+            assertNotAborted,
+          }),
+      );
       captureCalibration = outcome.calibration;
       captureForceScreenshot = outcome.forceScreenshot;
+      updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       probeSession = outcome.probeSession;
       if (outcome.lastBrowserConsole.length > 0) {
         lastBrowserConsole = outcome.lastBrowserConsole;
       }
+      observability.checkpoint("capture_calibration", "resolved", {
+        forceScreenshot: captureForceScreenshot,
+        multiplier: outcome.calibration?.estimate.multiplier ?? null,
+        p95Ms: outcome.calibration?.estimate.p95Ms ?? null,
+      });
+    } else {
+      observability.checkpoint("capture_calibration", "skipped", {
+        requestedWorkers: job.config.workers ?? "auto",
+        totalFrames,
+        htmlInCanvasDetected,
+        lowMemoryMode: Boolean(cfg.lowMemoryMode),
+      });
     }
 
+    // Low-memory safe-mode's single-worker pin lives inside
+    // resolveRenderWorkerCount so its "why workers=N" logging stays coherent.
     let workerCount = resolveRenderWorkerCount(
       totalFrames,
       job.config.workers,
@@ -1727,6 +1954,8 @@ export async function executeRenderJob(
       log,
       captureCalibration?.estimate,
     );
+    updateCaptureObservability({ workerCount });
+    observability.checkpoint("worker_resolution", "resolved", { workerCount });
 
     if (workerCount > 1 && probeSession) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;
@@ -1760,6 +1989,7 @@ export async function executeRenderJob(
       webm: ".webm",
       mov: ".mov",
       "png-sequence": "",
+      gif: ".gif",
     };
     const videoExt = FORMAT_EXT[outputFormat] ?? ".mp4";
     const videoOnlyPath = join(workDir, `video-only${videoExt}`);
@@ -1776,15 +2006,17 @@ export async function executeRenderJob(
     // exactly the single capture the page-side compositor produces. HDR
     // content still forces the layered path (HDR layers need per-layer
     // alpha + native HDR raw frame compositing in Node; that's out of scope
-    // for this opt-in).
+    // for this opt-in). GIF also uses this path for shader transitions
+    // because its two-pass palette encoder needs disk frames, not the
+    // layered path's streaming raw-video encoder.
     const usePageSideCompositingForTransitions =
-      cfg.enablePageSideCompositing &&
+      (cfg.enablePageSideCompositing || isGif) &&
       compiled.hasShaderTransitions &&
       !hasHdrContent &&
       !isPngSequence &&
       !needsAlpha;
     if (usePageSideCompositingForTransitions) {
-      fileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
+      activeFileServer.addPreHeadScript(HF_PAGE_SIDE_COMPOSITING_STUB);
       log.info(
         "[Render] Page-side compositing enabled — bypassing Node-side layered " +
           "shader-blend path. Engine will capture one opaque RGB frame per output frame.",
@@ -1794,15 +2026,34 @@ export async function executeRenderJob(
       !usePageSideCompositingForTransitions &&
       shouldUseLayeredComposite({
         hasHdrContent,
-        hasShaderTransitions: compiled.hasShaderTransitions,
+        hasShaderTransitions: compiled.hasShaderTransitions && !isGif,
         isPngSequence,
       });
+    updateCaptureObservability({
+      workerCount,
+      useStreamingEncode,
+      useLayeredComposite,
+      usePageSideCompositing: usePageSideCompositingForTransitions,
+      hasHdrContent,
+      forceScreenshot: captureForceScreenshot,
+    });
+    observability.checkpoint("capture_strategy", "resolved", {
+      workerCount,
+      forceScreenshot: captureForceScreenshot,
+      useStreamingEncode,
+      useLayeredComposite,
+      usePageSideCompositing: usePageSideCompositingForTransitions,
+      hasHdrContent,
+      hasShaderTransitions: compiled.hasShaderTransitions,
+      isPngSequence,
+    });
     const encoderHdr = hasHdrContent ? effectiveHdr : undefined;
     // png-sequence has no encoder, but the rest of the orchestrator still
     // reads `preset.quality` for `effectiveQuality` and `preset.codec` for
     // unrelated bookkeeping. Fall back to the mp4 preset shape — its values
     // are never written to ffmpeg in the png-sequence path.
-    const presetFormat: "mp4" | "webm" | "mov" = isPngSequence ? "mp4" : outputFormat;
+    const presetFormat: "mp4" | "webm" | "mov" =
+      outputFormat === "webm" || outputFormat === "mov" ? outputFormat : "mp4";
     const preset = getEncoderPreset(job.config.quality, presetFormat, encoderHdr);
 
     // CLI overrides (--crf, --video-bitrate) flow through job.config and must
@@ -1840,37 +2091,44 @@ export async function executeRenderJob(
       // post-HDR diagnostic that reads the boolean see the same value
       // the stage uses internally.
       captureForceScreenshot = true;
-      const hdrRes = await runCaptureHdrStage({
-        job,
-        cfg,
-        forceScreenshot: captureForceScreenshot,
-        log,
-        projectDir,
-        compiledDir,
-        framesDir,
-        videoOnlyPath,
-        width,
-        height,
-        totalFrames,
-        composition,
-        hasHdrContent,
-        effectiveHdr,
-        nativeHdrVideoIds,
-        nativeHdrImageIds,
-        videoTransfers,
-        imageTransfers,
-        hdrImageSrcPaths,
-        preset,
-        effectiveQuality,
-        effectiveBitrate,
-        fileServer,
-        buildCaptureOptions,
-        createRenderVideoFrameInjector,
-        hdrDiagnostics,
-        abortSignal,
-        assertNotAborted,
-        onProgress,
-      });
+      updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
+      const hdrRes = await observeRenderStage(
+        observability,
+        "capture_hdr_layered",
+        { workerCount, forceScreenshot: captureForceScreenshot, hasHdrContent },
+        () =>
+          runCaptureHdrStage({
+            job,
+            cfg,
+            forceScreenshot: captureForceScreenshot,
+            log,
+            projectDir,
+            compiledDir,
+            framesDir,
+            videoOnlyPath,
+            width,
+            height,
+            totalFrames,
+            composition,
+            hasHdrContent,
+            effectiveHdr,
+            nativeHdrVideoIds,
+            nativeHdrImageIds,
+            videoTransfers,
+            imageTransfers,
+            hdrImageSrcPaths,
+            preset,
+            effectiveQuality,
+            effectiveBitrate,
+            fileServer: activeFileServer,
+            buildCaptureOptions,
+            createRenderVideoFrameInjector,
+            hdrDiagnostics,
+            abortSignal,
+            assertNotAborted,
+            onProgress,
+          }),
+      );
       lastBrowserConsole = hdrRes.lastBrowserConsole;
       hdrPerf = hdrRes.hdrPerf;
       perfStages.captureMs = hdrRes.captureDurationMs;
@@ -1883,98 +2141,121 @@ export async function executeRenderJob(
       // and we fall back to the disk path below.
       let streamingHandled = false;
       if (useStreamingEncode) {
-        const streamingRes = await runCaptureStreamingStage({
-          fileServer,
-          workDir,
-          framesDir,
-          videoOnlyPath,
-          job,
-          totalFrames,
-          cfg,
-          forceScreenshot: captureForceScreenshot,
-          log,
-          workerCount,
-          probeSession,
-          outputFormat,
-          streamingEncoderOptions: {
-            fps: job.config.fps,
-            width,
-            height,
-            codec: preset.codec,
-            preset: preset.preset,
-            quality: effectiveQuality,
-            bitrate: effectiveBitrate,
-            pixelFormat: preset.pixelFormat,
-            useGpu: job.config.useGpu,
-            imageFormat: captureOptions.format || "jpeg",
-            hdr: preset.hdr,
-          },
-          buildCaptureOptions,
-          createRenderVideoFrameInjector,
-          abortSignal,
-          assertNotAborted,
-          onProgress,
-        });
+        const streamingRes = await observeRenderStage(
+          observability,
+          "capture_streaming",
+          { workerCount, forceScreenshot: captureForceScreenshot },
+          () =>
+            runCaptureStreamingStage({
+              fileServer: activeFileServer,
+              workDir,
+              framesDir,
+              videoOnlyPath,
+              job,
+              totalFrames,
+              cfg,
+              forceScreenshot: captureForceScreenshot,
+              log,
+              workerCount,
+              probeSession,
+              outputFormat,
+              streamingEncoderOptions: {
+                fps: job.config.fps,
+                width,
+                height,
+                codec: preset.codec,
+                preset: preset.preset,
+                quality: effectiveQuality,
+                bitrate: effectiveBitrate,
+                pixelFormat: preset.pixelFormat,
+                useGpu: job.config.useGpu,
+                imageFormat: captureOptions.format || "jpeg",
+                hdr: preset.hdr,
+              },
+              buildCaptureOptions,
+              createRenderVideoFrameInjector,
+              abortSignal,
+              assertNotAborted,
+              onProgress,
+            }),
+        );
         if (streamingRes.success) {
           streamingHandled = true;
           workerCount = streamingRes.workerCount;
+          updateCaptureObservability({ workerCount });
           probeSession = streamingRes.probeSession;
           lastBrowserConsole = streamingRes.lastBrowserConsole;
           perfStages.captureMs = Date.now() - stage4Start;
           perfStages.encodeMs = streamingRes.encodeMs; // Overlapped with capture
         } else {
           useStreamingEncode = false;
+          updateCaptureObservability({ useStreamingEncode });
+          observability.checkpoint("capture_streaming", "spawn failed; falling back to disk");
         }
       }
 
       if (!streamingHandled) {
         // ── Disk-based capture (original flow) ────────────────────────────
-        const captureRes = await runCaptureStage({
-          fileServer,
-          workDir,
-          framesDir,
-          job,
-          totalFrames,
-          cfg,
-          forceScreenshot: captureForceScreenshot,
-          log,
-          workerCount,
-          probeSession,
-          needsAlpha,
-          captureAttempts,
-          buildCaptureOptions,
-          createRenderVideoFrameInjector,
-          abortSignal,
-          assertNotAborted,
-          onProgress,
-        });
+        const captureRes = await observeRenderStage(
+          observability,
+          "capture_disk",
+          { workerCount, forceScreenshot: captureForceScreenshot, needsAlpha },
+          () =>
+            runCaptureStage({
+              fileServer: activeFileServer,
+              workDir,
+              framesDir,
+              job,
+              totalFrames,
+              cfg,
+              forceScreenshot: captureForceScreenshot,
+              log,
+              workerCount,
+              probeSession,
+              needsAlpha,
+              captureAttempts,
+              buildCaptureOptions,
+              createRenderVideoFrameInjector,
+              abortSignal,
+              assertNotAborted,
+              onProgress,
+            }),
+        );
         workerCount = captureRes.workerCount;
+        updateCaptureObservability({ workerCount });
         probeSession = captureRes.probeSession;
         lastBrowserConsole = captureRes.lastBrowserConsole;
 
         perfStages.captureMs = Date.now() - stage4Start;
 
-        const encodeRes = await runEncodeStage({
-          job,
-          log,
-          outputPath,
-          framesDir,
-          videoOnlyPath,
-          width,
-          height,
-          needsAlpha,
-          hasAudio,
-          audioOutputPath,
-          isPngSequence,
-          preset,
-          effectiveQuality,
-          effectiveBitrate,
-          enableChunkedEncode,
-          chunkedEncodeSize,
-          abortSignal,
-          assertNotAborted,
-          onProgress,
-        });
+        const encodeRes = await observeRenderStage(
+          observability,
+          "encode",
+          { hasAudio, isPngSequence, isGif, chunkedEncode: enableChunkedEncode },
+          () =>
+            runEncodeStage({
+              job,
+              log,
+              outputPath,
+              framesDir,
+              videoOnlyPath,
+              width,
+              height,
+              needsAlpha,
+              hasAudio,
+              audioOutputPath,
+              isPngSequence,
+              isGif,
+              preset,
+              effectiveQuality,
+              effectiveBitrate,
+              enableChunkedEncode,
+              chunkedEncodeSize,
+              abortSignal,
+              assertNotAborted,
+              onProgress,
+            }),
+        );
         perfStages.encodeMs = encodeRes.encodeMs;
       }
     } // end SDR capture paths block
@@ -1993,20 +2274,25 @@ export async function executeRenderJob(
     fileServer = null;
 
     // ── Stage 6: Assemble ───────────────────────────────────────────────
-    // Skipped for png-sequence — there is no encoded video to mux/faststart.
-    // The frames were copied directly to outputPath in Stage 5.
-    if (!isPngSequence) {
-      const assembleRes = await runAssembleStage({
-        job,
-        videoOnlyPath,
-        audioOutputPath,
-        outputPath,
-        hasAudio,
-        abortSignal,
-        assertNotAborted,
-        onProgress,
-      });
+    // Skipped for formats with no mux/faststart step. png-sequence is a
+    // directory deliverable, and gif is written directly to outputPath by the
+    // two-pass palette encoder.
+    if (!isPngSequence && !isGif) {
+      const assembleRes = await observeRenderStage(observability, "assemble", { hasAudio }, () =>
+        runAssembleStage({
+          job,
+          videoOnlyPath,
+          audioOutputPath,
+          outputPath,
+          hasAudio,
+          abortSignal,
+          assertNotAborted,
+          onProgress,
+        }),
+      );
       perfStages.assembleMs = assembleRes.assembleMs;
+    } else {
+      observability.checkpoint("assemble", `skipped for ${outputFormat}`);
     }
 
     // ── Complete ─────────────────────────────────────────────────────────
@@ -2016,6 +2302,13 @@ export async function executeRenderJob(
     const totalElapsed = Date.now() - pipelineStart;
 
     const tmpPeakBytes = existsSync(workDir) ? sampleDirectoryBytes(workDir) : 0;
+    observability.checkpoint("pipeline", "completed", { totalElapsedMs: totalElapsed });
+    const observabilitySummary = observability.summary({
+      lastBrowserConsole,
+      capture: captureObservability,
+      extraction: extractionObservability,
+      compositionHash,
+    });
 
     const perfSummary = buildRenderPerfSummary({
       job,
@@ -2036,6 +2329,7 @@ export async function executeRenderJob(
       captureAttempts,
       hdrDiagnostics,
       hdrPerf,
+      observability: observabilitySummary,
       peakRssBytes: memSampler.peakRssBytes(),
       peakHeapUsedBytes: memSampler.peakHeapUsedBytes(),
     });
@@ -2091,7 +2385,15 @@ export async function executeRenderJob(
         ? error
         : new RenderCancelledError("render_cancelled");
     }
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = normalizeErrorMessage(error);
+    const carriedBrowserConsole = getCaptureStageBrowserConsole(error);
+    if (carriedBrowserConsole.length > 0) {
+      lastBrowserConsole = [...lastBrowserConsole, ...carriedBrowserConsole].slice(-200);
+    }
+    if (!observability.hasFailure()) {
+      const failureStart = Date.now();
+      observability.stageError(job.currentStage || "pipeline", failureStart, error);
+    }
 
     // Suggest single-worker retry on parallel capture timeout.
     // Video-heavy compositions often cause multi-worker timeouts because
@@ -2111,12 +2413,44 @@ export async function executeRenderJob(
     job.error = errorMessage;
     updateJobStatus(job, "failed", `Failed: ${errorMessage}`, job.progress, onProgress);
     job.failedStage = job.currentStage;
+    const observabilitySummary = observability.summary({
+      lastBrowserConsole,
+      capture: captureObservability,
+      extraction: extractionObservability,
+      compositionHash,
+    });
     job.errorDetails = buildRenderErrorDetails({
       error,
       pipelineStartMs: pipelineStart,
       lastBrowserConsole,
       perfStages,
       hdrDiagnostics,
+      observability: observabilitySummary,
+    });
+
+    log.info("[Render] Failure summary", {
+      failedStage: job.currentStage,
+      error: errorMessage,
+      elapsedMs: Date.now() - pipelineStart,
+      stageTimings: perfStages,
+      isTimeout: isTimeoutError,
+      workers: job.config.workers ?? "auto",
+      protocolTimeout: cfg.protocolTimeout,
+      observedFailedPhase: observabilitySummary.failedPhase,
+      observedLastPhase: observabilitySummary.lastEvent?.phase,
+      observedLastStatus: observabilitySummary.lastEvent?.status,
+      browserDiagnostics: observabilitySummary.browserDiagnostics,
+      extraction: observabilitySummary.extraction,
+      browserConsoleErrors: lastBrowserConsole
+        .filter(
+          (l) =>
+            l.includes("ERROR") ||
+            l.includes("PAGEERROR") ||
+            l.includes("REQUESTFAILED") ||
+            l.includes("[FrameCapture:NAV]") ||
+            /\[Browser:HTTP\d{3}\]/.test(l),
+        )
+        .slice(-5),
     });
 
     await cleanupRenderResources({
