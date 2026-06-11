@@ -110,6 +110,10 @@ export interface DesignTokens {
     height: number;
     outerHTML: string;
     isLogo: boolean;
+    /** Closest semantic landmark (header/nav/main/footer/aside). Lets the namer split header-logo from partner-logo. */
+    parentLandmark?: string | null;
+    /** True when inside a "partners"/"customers"/"logos" container — distinguishes logo walls from brand marks. */
+    inPartnerContext?: boolean;
   }>;
   /** Detected page sections with bounding rects */
   sections: Array<{

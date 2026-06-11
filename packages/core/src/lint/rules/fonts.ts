@@ -20,6 +20,45 @@ const GENERIC_FAMILIES = new Set([
   "revert",
 ]);
 
+// System font stacks shipped by browsers / OSes. They are not declared via
+// @font-face and the producer does not bundle them — they're resolved by the
+// rendering OS. Treat as "OK without @font-face" to avoid false positives on
+// realistic font-family stacks like `"Inter", -apple-system, BlinkMacSystemFont, sans-serif`.
+// Reproducibly hit across cell-G/raycast and multi-URL runs as a persistent
+// false-positive that trained agents to ignore lint output.
+const SYSTEM_FALLBACK_FAMILIES = new Set([
+  // Apple
+  "-apple-system",
+  "blinkmacsystemfont",
+  "apple-system",
+  "apple color emoji",
+  "sf pro",
+  "sf pro display",
+  "sf pro text",
+  "sf mono",
+  // Microsoft
+  "segoe ui variable",
+  "segoe ui variable text",
+  "segoe ui emoji",
+  "segoe ui symbol",
+  "segoe ui historic",
+  "tahoma",
+  "calibri",
+  "verdana",
+  "consolas",
+  "menlo",
+  "monaco",
+  // Google / Android
+  "noto color emoji",
+  "noto sans",
+  "droid sans",
+  // Linux
+  "ubuntu",
+  "cantarell",
+  "dejavu sans",
+  "liberation sans",
+]);
+
 // Fonts pre-bundled as data URIs in the producer (deterministicFonts.ts FONT_ALIASES).
 // These render correctly without @font-face — the producer injects them automatically.
 // Must match the keys in packages/producer/src/services/deterministicFonts.ts exactly.
@@ -130,7 +169,10 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     const used = extractUsedFontFamilies(styles);
 
     const undeclared = used.filter(
-      (name) => !declared.has(name) && !PRODUCER_BUNDLED_FONTS.has(name),
+      (name) =>
+        !declared.has(name) &&
+        !PRODUCER_BUNDLED_FONTS.has(name) &&
+        !SYSTEM_FALLBACK_FAMILIES.has(name),
     );
     if (undeclared.length === 0) return findings;
 

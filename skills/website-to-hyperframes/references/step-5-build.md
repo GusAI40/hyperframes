@@ -1,8 +1,6 @@
 # Step 5: Build Compositions
 
-**Captions rule — read before building anything:** Never create `compositions/captions.html` with an empty transcript (`const script = []`). If the VO/transcript step was skipped or failed, do not create a captions composition at all. An empty captions file silently does nothing and wastes a track slot. Only create it when `transcript.json` has real word timestamps.
-
-**Captions stacking bug:** Every caption word group must start with `opacity: 0` (or `visibility: hidden`) and be positioned `position: absolute`. Never show more than one group at a time — GSAP controls visibility sequentially. If multiple groups are visible simultaneously it means either (a) the initial CSS state isn't hidden, or (b) a group's exit tween is missing before the next group's entrance fires. After building captions.html, take a snapshot at 3–4 timestamps mid-narration and verify only one word group is visible per frame.
+**Captions are NOT your job.** Do not author `compositions/captions.html`. The deterministic `scripts/captions.mjs` runs between this step and Step 6 (see Step 4's Captions section) and produces the captions composition with zero LLM calls. If you find yourself reaching for caption-related references in the hyperframes skill, stop — the script handles word grouping, skin selection, and brand tokenization. Build only the BEAT compositions here.
 
 **Before building, verify you have:**
 
@@ -25,267 +23,171 @@ cp -r skills/website-to-hyperframes/assets/sfx/ <project-dir>/sfx/
 find . -path "*/website-to-hyperframes/assets/sfx" -exec cp -r {} <project-dir>/sfx/ \;
 ```
 
-## 2. Build the root index.html
+## Known landmines — read before writing each beat composition
 
-Create `index.html` yourself. This is the orchestrator — it holds beat slots, narration audio, SFX, and shader transitions (if any).
+The rules below came out of cell-A through cell-H website-capture builds across heygen.com, raycast.com, huly.io, and airbnb.com in 2026-04 → 2026-05. Beat compositions that lint clean still ship broken without these — text that mask-reveals to nothing, sub-agents that silently overwrite each other's HTML. The linter cannot catch most of these; the author must.
 
-**Critical CSS — every beat must overlap in the same frame:**
+Each rule names a single failure mode and the one-line fix. Do not summarize or shorten these when prompting sub-agents — paste them verbatim into the RULES section of every dispatch.
 
-```css
-.scene {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 1920px;
-  height: 1080px;
-  overflow: hidden;
-}
-```
+The root `index.html` is NOT in scope here — it's produced deterministically by `scripts/assemble-index.mjs` from `group_spec.json` (see Section 4 below — final action of Step 5). Workers only write `compositions/<beat-id>.html`. Old landmines about root template-wrapping, `data-composition-id` on `<html>`/`<body>`, and the GSAP script tag are now assembler-owned invariants — they cannot fire from a beat file.
 
-**Beat structure:**
+### 1. Sub-comp contract: `<template>` wrap + `data-duration` on root (hard-fatal if drift)
+
+Every beat composition lives inside `<template id="<beat-id>-template">…</template>` and the inside-template root `<div>` carries `data-composition-id="<beat-id>"` AND `data-duration="<X>"` where `X` matches `estimatedDuration_s` from the storyboard within `DUR_EPSILON=0.01s`. The assembler cross-checks this and **exits 1 on mismatch** — fix is upstream (re-dispatch the worker), never in the assembled index.html.
 
 ```html
-<div
-  id="root"
-  data-composition-id="main"
-  data-start="0"
-  data-duration="TOTAL"
-  data-width="1920"
-  data-height="1080"
->
+<!-- ✅ GOOD: beat composition shape -->
+<template id="beat-3-feature-tour-template">
   <div
-    id="beat-1"
-    class="scene"
-    data-composition-id="beat-1-hook"
-    data-composition-src="compositions/beat-1-hook.html"
-    data-start="0"
-    data-duration="5.5"
-    data-track-index="1"
+    id="beat-3-feature-tour"
+    data-composition-id="beat-3-feature-tour"
     data-width="1920"
     data-height="1080"
-  ></div>
-
-  <!-- more beats... -->
-
-  <audio
-    id="narration"
-    src="narration.wav"
-    data-start="0"
-    data-duration="NARRATION_LENGTH"
-    data-track-index="0"
-    data-volume="1"
-  ></audio>
-
-  <!-- SFX on content moments, NOT on shader transitions -->
-  <audio
-    id="sfx-impact"
-    src="sfx/impact-bass-1.mp3"
-    data-start="0.3"
-    data-duration="2.1"
-    data-track-index="41"
-    data-volume="0.35"
-  ></audio>
-</div>
+    data-duration="4.5"
+  >
+    <!-- beat content -->
+  </div>
+  <style>/* beat-scoped CSS */</style>
+  <script>/* beat-scoped GSAP timeline registered as window.__timelines["beat-3-feature-tour"] */</script>
+</template>
 ```
-
-SFX were assigned in the storyboard (Step 3) — implement exactly what STORYBOARD.md specifies. Each SFX entry has a file, trigger time, and volume. Wire each one as an `<audio>` element with the exact `data-start`, `data-duration`, and `data-volume` from the storyboard. Do not add, remove, or substitute SFX beyond what the storyboard says.
-
-**Choose architecture based on pacing (from Step 3)**
-
-| Pacing                        | Architecture                                                                                                                                                                         | Why                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| **Fast** (billboard-per-beat) | Single `index.html`, stacked `<div class="beat">` elements, GSAP opacity sequencing. NO sub-compositions, NO HyperShader. Hard cuts via `tl.set()`. See stacked-beats pattern below. | Sub-compositions add latency; hard cuts need instant swaps. One file = zero load delay. |
-| **Moderate / Slow / Arc**     | Sub-compositions with `HyperShader.init()`. Each beat in `compositions/beat-N.html`. CSS crossfades or shader transitions between scenes.                                            | Transitions need HyperShader's compositing. Sub-agents build each beat independently.   |
-
-If the storyboard says "fast" pacing: use the stacked-beats pattern below. Do not use HyperShader — it adds scene registration overhead that creates gaps between hard cuts. Every frame is content, no transition frames.
-
-**Stacked-beats pattern (fast pacing):**
-
-Each beat is a composed scene — composed from divs, SVG, canvas, and CSS. Never a full-bleed screenshot. Each beat's structure (cards, panels, layered text, SVG-drawn mark, etc.) comes from the storyboard's Composition + Accents spec.
 
 ```html
-<div
-  data-composition-id="video"
-  data-width="1920"
-  data-height="1080"
-  data-start="0"
-  data-duration="TOTAL"
-  style="position:relative;width:1920px;height:1080px;"
->
-  <!-- Beat 1: kinetic-typography hook (composed from per-word spans) -->
-  <div class="beat" id="b01" style="opacity:1;">
-    <div class="mega">
-      <span class="w">Stop</span>
-      <span class="w">context-switching.</span>
-    </div>
-  </div>
-
-  <!-- Beat 2: composed kanban — 3 columns of cards-as-divs, NOT a screenshot -->
-  <div class="beat" id="b02">
-    <div class="kanban">
-      <div class="col">
-        <div class="card">Triage tickets</div>
-        <div class="card">Review PR</div>
-      </div>
-      <div class="col">
-        <div class="card active">Design spec</div>
-      </div>
-      <div class="col">
-        <div class="card">Ship v2.1</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Beat 3: SVG logo draw — composed, not an <img> -->
-  <div class="beat" id="b03">
-    <svg viewBox="0 0 200 200"><path class="mark" d="..." /></svg>
-  </div>
-  <!-- more beats — each a composed scene with its own visual world -->
-</div>
+<!-- ❌ BAD: data-duration on the host div in index.html (legacy cell-A pattern) -->
+<!-- The assembler emits this host div; workers must NOT write it themselves. -->
+<div data-composition-id="beat-3-feature-tour" data-duration="4.5" data-composition-src="..."></div>
 ```
 
-If you ever find yourself writing `<img src="capture/assets/...">` as a beat's primary visual, stop. That's the slideshow pattern this skill exists to break. Build the UI element from divs and CSS using the brand colors from DESIGN.md. The only legitimate `<img>` uses are: (a) the brand logo when it's purely raster, (b) a hero illustration layered as ambient depth behind composed content, (c) a gradient/texture image as a background wash. Never a product UI screenshot as the load-bearing visual.
+Do NOT include `<script src="…gsap…">` or `<script src="hyper-shader-local.js">` inside your `<template>` — the assembler owns the root `<head>` and emits both. Duplicating them inside beats double-loads GSAP and double-inits HyperShader.
 
-```css
-.beat {
-  position: absolute;
-  inset: 0;
-  width: 1920px;
-  height: 1080px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  overflow: hidden;
-}
+### 2. No opacity keys at t=0 (frame-0 black trap)
+
+Any GSAP opacity tween whose start position is 0 — including `tl.fromTo(el,{opacity:1},{opacity:1},0)` and `tl.set(sel,{opacity:1},0)` — triggers GSAP's `immediateRender` under seeked rendering. Frame 0 renders pure black or white. The DOM initial state wins; the timeline's position-0 tween loses. Cell-F heygen burned 3 render cycles rediscovering this.
+
+The fix lives in the DOM, not the timeline. Opening-scene entrances are TRANSFORM-ONLY. Put the subject's visible state in INLINE `style="opacity:1"` to override any CSS layer with `opacity:0`.
+
+```js
+// ❌ BAD: opacity tween starting at t=0 — frame 0 ships black
+tl.fromTo(".hero", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 0);
 ```
-
-```javascript
-var beats = [
-  { id: "b01", at: 0, dur: 1.8 },
-  { id: "b02", at: 1.8, dur: 1.0 },
-  // ...
-];
-beats.forEach(function (b) {
-  var el = document.getElementById(b.id);
-  if (b.id !== "b01") tl.set(el, { opacity: 1 }, b.at);
-  gsap.set(el, { scale: 1.012 });
-  tl.to(el, { scale: 1, duration: 0.25, ease: "power2.out" }, b.at);
-  if (b !== beats[beats.length - 1]) tl.set(el, { opacity: 0 }, b.at + b.dur);
-});
-```
-
-Each beat gets its own visual world — different background, different color, different energy. No two consecutive beats should look alike. Scale pulse (1.012→1.0) on every beat entry is subtle but felt.
-
-If the storyboard says "slow" or "cinematic": build each beat as a sub-composition. Use long crossfades (0.8–1.2s `duration` with no `shader` key = CSS crossfade). Inside each beat, use continuous subtle motion — nothing is static:
-
-- Slow camera drift on the composed scene root: `tl.fromTo(scene, {scale:1.05, x:20}, {scale:1, x:-20, duration: BEAT, ease:"none"})` (Ken-Burns style, but on your composed elements — not on a screenshot)
-- Parallax text layers: `tl.fromTo(text, {y:30}, {y:-30, duration: BEAT, ease:"power1.inOut"})`
-- 1–2s breathing room before text enters (don't animate everything at t=0)
-- Soft easing: `expo.out` for entrances, `power1.inOut` for drifts
-
-**Multi-scene index.html with HyperShader — for moderate/slow/arc pacing**
-
-For videos with sub-composition beats and scene transitions, `index.html` MUST use `HyperShader.init()`. This is the entire scene orchestration layer. Do NOT try to use registry block sub-compositions (e.g. `compositions/domain-warp-dissolve.html`) for transitions — those are standalone showcase demos, not how HyperShader works in multi-scene compositions.
-
-Copy the local shader build first:
-
-```bash
-cp packages/shader-transitions/dist/index.global.js <project-dir>/hyper-shader-local.js
-```
-
-Full working `index.html` pattern — every field matters:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-<script src="hyper-shader-local.js"></script>
-
-<div id="root" data-composition-id="main" data-start="0" data-duration="TOTAL"
-     data-width="1920" data-height="1080">
-
-  <!-- Host divs: MUST have both id AND data-composition-id matching the same value.
-       HyperShader.init() uses getElementById() — without id="beat-1" it fails with
-       "scene ids not found in DOM". -->
-  <div id="beat-1" class="scene"
-    data-composition-id="beat-1-hook"
-    data-composition-src="compositions/beat-1-hook.html"
-    data-start="0"        <!-- transition INTO this beat starts here -->
-    data-duration="4.5"   <!-- must match the GSAP BEAT constant in the composition -->
-    data-track-index="1"
-    data-width="1920" data-height="1080"
-    style="background: #YOUR_BEAT_BG_COLOR;"><!-- background here OR in sub-comp CSS — both work -->
-  </div>
-
-  <div id="beat-2" class="scene"
-    data-composition-id="beat-2-features"
-    data-composition-src="compositions/beat-2-features.html"
-    data-start="4.0"
-    data-duration="5.5"
-    data-track-index="2"  <!-- use sequential track indices (1,2,3...) to avoid linter errors -->
-    data-width="1920" data-height="1080"
-    style="background: #YOUR_BEAT_BG_COLOR;">
-  </div>
-
-  <!-- ... more beats ... -->
-
-  <!-- ALWAYS add a dummy s-end scene as the LAST entry.
-       HyperShader renders scenes[N-1] as black in some contexts.
-       s-end is invisible — it just prevents your CTA from being last. -->
-  <div id="s-end" class="scene"
-    data-composition-id="s-end"
-    data-start="TOTAL_MINUS_0.1"
-    data-duration="0.1"
-    data-track-index="N"
-    data-width="1920" data-height="1080">
-  </div>
-
-</div>
-
+<!-- ✅ GOOD: subject visible in DOM; scale-only entrance -->
+<div class="hero" style="opacity:1">…</div>
 <script>
-  window.__timelines = window.__timelines || {};
-  var tl = HyperShader.init({
-    bgColor: "#000000",
-    accentColor: "#YOUR_ACCENT",
-    scenes: ["beat-1", "beat-2", "beat-3", ..., "s-end"],
-    transitions: [
-      { time: 4.0, shader: "sdf-iris", duration: 0.7 },    // WebGL shader
-      { time: 9.5, duration: 0.5 },                         // CSS crossfade (no shader)
-      // ... one transition per scene boundary ...
-      { time: TOTAL_MINUS_0.1, duration: 0.1 }              // dummy → s-end
-    ],
-  });
-  // Add ALL beat animations to the returned tl AFTER init()
-  window.__timelines["main"] = tl;
+  tl.fromTo(".hero", { scale: 0.92 }, { scale: 1, duration: 0.6, ease: "power2.out" }, 0);
 </script>
 ```
 
-**Track index and the linter:** Use sequential track indices (`data-track-index="1"`, `"2"`, `"3"`...) for each beat — NOT all on track `"1"`. The linter flags overlapping clips on the same track as an error, and HyperShader compositions always have overlapping beats (the transition window). Using sequential indices silences the linter; HyperShader manages which scene is VISIBLE via opacity regardless of track index.
+If the scene container needs a fade-in, mark it `{noIn}` and use a transform on a child element instead.
 
-**Scene background colors:** setting `style="background: #3139FB"` on the host `<div id="beat-1">` in index.html is the simplest pattern — it's visible at a glance from the root file. Setting background inside the sub-composition's CSS also works. Either is fine; host div is preferred for clarity.
+### 3. Don't `yPercent` + `overflow:hidden` for mask-reveals
 
-**Critical: beat host divs must have sequential `data-start` and matching `data-duration`.** Do NOT set `data-start="0"` on all beats — the render engine seeks each beat's GSAP timeline to `global_time - data_start`. At t=10s with `data-start=0`, a 5.5s timeline is seeked past its end and all content disappears.
+`.ln { overflow: hidden }` + child `<span>` initialized with `transform: translateY(108%)` + GSAP `fromTo({ yPercent: 108 }, { yPercent: 0 })` leaves text PERMANENTLY HIDDEN in the rendered MP4 and snapshots. Lint and validate both pass — the headline is just absent. Hit in cell-D run 1, run 2, and cell-F run 3.
 
-`data-duration` must match the GSAP `BEAT` constant in the composition (the length of the sub-composition's internal timeline). If the two disagree, animations get cut off.
+Use plain opacity + y-pixel reveals instead:
 
-**Storyboard Beat Timing section** tells you both values — use them directly:
+```js
+// ✅ GOOD
+tl.fromTo(".headline", { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 0.6 });
+```
 
-- `data-start` = "Transition in at:" value from the storyboard
-- `data-duration` = "GSAP duration:" value from the storyboard
+If you must use yPercent on a clipped child, mark the parent with `data-layout-allow-overflow` and use `line-height ≥ 1.35`.
 
-**Font handling:** Common fonts are auto-resolved by the renderer: use `"Inter"` (not `"Inter Variable"` — the compiler only maps the base name), `"Roboto"`, `"JetBrains Mono"`, `"Poppins"`. If a composition uses `"Inter Variable"` it will log compiler warnings and may fall back incorrectly — always use `"Inter"`. Only brand-specific fonts (GT Walsheim, Aeonik, etc.) need `@font-face`. Check `capture/assets/fonts/` — hashed filenames are Google Fonts subsets that auto-resolve; recognizable filenames (e.g. `BrandSans-Bold.woff2`) are brand fonts that need `@font-face` declarations.
+### 4. Scope `d="..."` regex to `<path>` only
 
-**Brand font @font-face:** If the storyboard's BRAND VALUES lists a brand-specific font with a path in `capture/assets/fonts/`, add the `@font-face` block at the top of each composition that uses it — sub-agents won't do this unless you tell them explicitly. Paste the exact `@font-face` declaration in the sub-agent prompt's BRAND VALUES section. Without this, every composition falls back to `system-ui` and the brand typeface never loads.
+A broad normalizer like `/d="[^"]*"/g` over a composition file ALSO matches the substring inside `id="…"` (the `d` of `id`). It mangles `id="b8-cta"` → `id="b8 - c t a"` because `c`/`t`/`a` are SVG path command letters. CSS selectors break, `getElementById` returns `null`, you get a cascade of "GSAP target not found" warnings.
 
-**⚠ ASSET PATHS — most common sub-agent mistake (5+ agents per run):** When a composition references a captured accent (logo, gradient layer, hero illustration), the path must be relative to the **PROJECT ROOT**, not to the composition file. `compositions/beat-N.html` lives one directory deep, but paths must be written as if from the root.
+```js
+// ❌ BAD: matches d="..." inside id="..."
+htmlSrc.replace(/d="[^"]*"/g, normalizePath);
 
-- ✅ `capture/assets/logo.svg`
-- ❌ `../capture/assets/logo.svg`
+// ✅ GOOD: scoped to <path d="...">
+htmlSrc.replace(/<path[^>]*\sd="([^"]*)"/g, normalizePath);
+```
 
-The Studio preview server rewrites base URLs to the project root — `../` paths that seem to work locally will 404 in preview and in renders. Add this verbatim to every sub-agent prompt's RULES section.
+### 5. Drifter `repeat:-1` is a HARD lint error
 
-## 3. Build each composition — USE SUB-AGENTS
+Looping background "drifter" elements (floating particles, slow gradient orbs, ambient marks) often get authored as `repeat: -1` or `repeat: Math.ceil(T/cycle) - 1`. Both fail lint — `gsap_infinite_repeat` and `gsap_repeat_ceil_overshoot`. Only `floor(T/cycle) - 1` as a literal integer passes. The renderer's seek-based capture needs a finite, computable repeat count it can resolve at frame zero.
+
+```js
+// ❌ BAD
+gsap.to(".drifter", { x: 100, duration: 2.6, repeat: -1 });
+gsap.to(".drifter", { x: 100, duration: 2.6, repeat: Math.ceil(20 / 2.6) - 1 });
+
+// ✅ GOOD: hardcode the integer
+gsap.to(".drifter", { x: 100, duration: 2.6, repeat: 6 }); // floor(20/2.6) - 1
+```
+
+### 6. Don't use `class="scene"` for non-scene overlays in HyperShader compositions
+
+`HyperShader.init()` pins every element with `class="scene"` to `opacity: 0` unless it's listed in `scenes[]`. An overlay with `class="scene"` will stay invisible forever. No lint or validate error. Use `position: absolute; z-index: 50` on a plain class like `.overlay-layer` instead.
+
+### 7. Hero captions ≥ 80px, and don't combine `transform: scale` on parent with `top:50%; translate(-50%,-50%)` on child
+
+Hero text floors at 80px (cell-H run-3 had a 52px caption fail). Separately: GSAP `scale()` on a wrapper makes the wrapper the containing block; `top:50%; transform: translate(-50%, -50%)` on an absolute child re-resolves against the collapsed wrapper and flies off-screen. For centering inside scaled wrappers, use flexbox on the camera wrapper and make the card a normal in-flow child.
+
+### 8. Local fonts via literal family name, not CSS var
+
+`font-family: var(--f)` where `--f: "Inter"` triggers `font_family_without_font_face` warning + "No deterministic font mapping for var(--f)". Chrome resolves the var at render but the compiler can't see through it. Captured `.woff2` files are often Next.js subsets and need explicit `@font-face`. Use the literal family name in `font-family` declarations — keep CSS vars for colors/sizes only.
+
+```css
+/* ❌ BAD */
+:root { --f: "Inter"; }
+body { font-family: var(--f), sans-serif; }
+
+/* ✅ GOOD */
+body { font-family: "Inter", system-ui, sans-serif; }
+```
+
+### 9. Always use the local CLI — never `npx hyperframes`
+
+Every CLI invocation in this skill uses `npx tsx packages/cli/src/cli.ts <cmd>`. The published `npx hyperframes` is whatever shipped on npm; the local CLI is the current source. Lint rules, capture asset-naming, snapshot fixes, perception gate, assemble-index — all of them have unshipped changes that the published package doesn't have. Never run `npx hyperframes` for this workflow.
+
+`lint` / `validate` take a DIRECTORY, not a file (`npx tsx packages/cli/src/cli.ts lint .` not `... lint index.html`). `--quality medium` is invalid — the valid set is `draft | standard | high`.
+
+## 2. Build each composition — USE SUB-AGENTS
 
 **Before dispatching, re-read DESIGN.md and STORYBOARD.md.** You wrote these files earlier in the session and you think you remember them. You don't — not the exact hex values, not the specific font families, not the button border-radius, not the Do's/Don'ts. Re-read them now so you can paste accurate brand rules and beat specs into each sub-agent prompt.
+
+### Build the dispatch packet ONCE before fan-out
+
+Workers do a single Read of a pre-built packet at Step 0 instead of pulling DESIGN.md + STORYBOARD.md + SCRIPT.md + transcript.json + brand values separately (saves 3-4 Reads × N workers). Run this once from `$PROJECT_DIR` before dispatching:
+
+```bash
+# Build shared header from project-level globals (DESIGN.md + STORYBOARD.md + SCRIPT.md + transcript.json)
+bash <SKILL_DIR>/scripts/w2h-dispatch-packet.sh shared
+# → writes /tmp/w2h-shared.txt
+```
+
+Then, for each beat you're about to dispatch, build the per-worker packet (shared header + that beat's spec inlined as YAML):
+
+```bash
+bash <SKILL_DIR>/scripts/w2h-dispatch-packet.sh beat 1 "compositions/beat-1-hook.html" "$(cat <<'YAML'
+concept: kinetic-typography hook
+mood: urgent
+vo_cue: "Stop context-switching."
+start_s: 0.0
+duration_s: 1.8
+techniques: [per-word-kinetic-type, scale-pop]
+assets: []
+text_effects: [soft-blur-in]
+brand_values_paste: |
+  primary: #3139FB
+  font_display: "Aeonik"
+  font_body: "Inter"
+sfx: []
+motion_floor: continuous-scale-drift
+prev_beat_handoff: null
+next_beat_handoff: composed-kanban
+YAML
+)"
+# → writes /tmp/w2h-dispatch/b1.txt — the worker's one-Read input
+```
+
+In your sub-agent dispatch prompt, include the line `Dispatch packet: /tmp/w2h-dispatch/b<N>.txt` in the `## Dispatch context` block — the worker's INPUT contract (top of `beat-builder-guide.md`) tells it to Read that file at Step 0. **w2h workers may still read sibling beat files when continuity demands** (motif callbacks, color carry-through) — the packet is the default starting point, not a wall-off.
+
+### Dispatch parallelism
 
 **If your runtime supports parallel sub-agents** (Claude Code, Cursor, most agent frameworks): dispatch one sub-agent per beat — 3 to 4× faster than building sequentially. For 3+ beats, always dispatch in parallel. For 1–2 beats, sequential is fine.
 
@@ -301,7 +203,7 @@ Build the composition for Beat N. Save to compositions/beat-N-name.html.
 FIRST: Read skills/website-to-hyperframes/references/beat-builder-guide.md end to end.
 It has your full workflow, all rules, easing vocabulary, and file references.
 Follow its workflow exactly:
-  build → lint (`npx hyperframes lint .`)
+  build → lint (`npx tsx packages/cli/src/cli.ts lint .`)
         → snapshot (`npx tsx packages/cli/src/cli.ts snapshot . --frames 3`)
         → view contact sheet AND read snapshots/descriptions.md
         → fix issues
@@ -333,7 +235,7 @@ Colors:
 Fonts:
   Headlines: [font family], [weight]
   Body:      [font family], [weight]
-  [brand font path if needed: capture/assets/fonts/Brand.woff2]
+  [paste the EXACT @font-face block from DESIGN.md Section 2 VERBATIM — every brand font the beat uses needs its @font-face declared in the beat's <style> block, src URL pointing at the hashed file in capture/assets/fonts/. Do not abbreviate, do not invent paths. Without the @font-face, the brand font won't load and Chrome falls back to the system stack.]
 
 Key component styles:
   [paste relevant lines from DESIGN.md]
@@ -372,7 +274,7 @@ For each beat:
 - **Minimum fonts**: 80px+ headlines, 20px+ body
 - **WCAG contrast on gradient backgrounds:** The contrast validator samples actual background pixels under the text element — if the background is a gradient image, darker parts of the image make the measured ratio _worse_ when you darken the text color, not better. Fix: either place text over a solid-color zone, or add `data-layout-ignore` attribute to decorative labels that don't need WCAG compliance. Don't blindly darken text color when the background isn't solid.
 
-## 4. After all compositions are built — reconciliation check
+## 3. After all compositions are built — reconciliation check
 
 Before moving to Step 6, run this sanity check:
 
@@ -383,37 +285,56 @@ ls compositions/
 
 For every `.html` file in `compositions/`, confirm that `index.html` has a `data-composition-src="compositions/<filename>"` pointing to it. If any composition file is not referenced in `index.html`, add the missing host div now — an unreferenced composition is completely invisible at runtime.
 
-**Captions stub rule:** Never create a `compositions/captions.html` with an empty transcript (`const script = [];`). If the VO/transcript step was skipped or failed, do not create the captions composition at all. An empty captions file that returns immediately is worse than no captions file — it silently does nothing and wastes a track slot.
+Note: `compositions/captions.html` is NOT authored at this step. It is produced deterministically by `scripts/captions.mjs` (see Step 4 — Captions) after this step completes, and the assembler mounts it as track 12 if and only if the file exists. Do not create it here.
 
-## 5. Read each beat HTML top-to-bottom — REQUIRED gate before Step 6
+## 4. Deterministic index.html assembly — final action of Step 5
 
-**Do not declare Step 5 complete on sub-agents' word.** Earlier sessions had sub-agents reply "looks good, 0 errors" and the main agent trusted them — that's how videos shipped with mismatched colors, missing logos, headlines too small to read. Close the trust path by opening every file the sub-agent produced.
+The root `index.html` is now produced deterministically by `scripts/assemble-index.mjs` — workers no longer hand-author it. The orchestrator runs prep then assembler:
 
-For each `compositions/beat-N.html`:
+```bash
+node skills/website-to-hyperframes/scripts/w2h-prep.mjs --hyperframes <project-dir>
+node skills/website-to-hyperframes/scripts/assemble-index.mjs \
+  --group-spec <project-dir>/group_spec.json \
+  --hyperframes <project-dir>
+```
 
-1. **Open the file and read it top-to-bottom.** Not a glance. Not a grep. Read the `<style>` block, then the markup, then the `<script>` block. Understand what's actually there.
-2. **Cross-check against DESIGN.md:**
-   - Does the `--bg` / primary background hex from DESIGN.md appear in the CSS or inline styles?
-   - Does the accent hex appear (if this beat uses an accent)?
-   - Are fonts the ones DESIGN.md specified? If `@font-face` is declared, does the path match a real file under `capture/assets/fonts/` or a published `@fontsource/*` import?
-   - Is the headline `font-size` ≥80px?
-3. **Cross-check against STORYBOARD.md (this beat's section):**
-   - Are the captured assets the storyboard called for actually referenced in the HTML (`<img src=...>`, inline SVG, `background-image: url(...)`, etc.)? Open the asset paths and confirm the files exist.
-   - Does the GSAP timeline cover the full beat duration, not just the first 1-2 seconds of entrance tweens? Look for events spread across the `BEAT` constant.
-   - Does the shot framing/camera move described in the storyboard show up in the GSAP code (scale/x/y/yPercent transforms with meaningful magnitudes)?
-4. **Check the technical gates inline:**
-   - `data-composition-id` on the root div matches the `window.__timelines["..."]` key in the script
-   - `data-width` and `data-height` match the host div in index.html
-   - The script is INSIDE the `<template>`, not after `</template>`
-   - No bare `gsap.to(...)`, no `Math.random()`, no `repeat: -1`
-5. **Open each frame in `snapshots/beat-N/`** and confirm visually that the entrance, hold, and exit moments look like what the storyboard described. If `snapshots/descriptions.md` exists, read Gemini's per-frame analysis of this beat in particular.
+What `w2h-prep` emits in `group_spec.json` that the assembler reads:
 
-**Anything off — fix it inline (small CSS / GSAP correction) or re-dispatch the sub-agent with the specific problem quoted.** Do not move to Step 6 until every beat has been read top-to-bottom and the cross-checks pass.
+- `total_duration_s`, `total_scenes` — derived from beat `data-duration` sum
+- `composition: {width, height, fps}` — default 1920×1080×30; portrait/square supported by overriding before the assembler runs
+- `voice: {path, start_s, duration_s, volume}` — auto-detected from `narration.wav` / `narration.mp3` at project root
+- `font_face_css` — aggregated `@font-face` blocks from beats
+- `groups[0].scenes[<sid>].{start_s, estimatedDuration_s, voicePath, wordsPath}` — per-beat
+- `sfx[]` — empty by default; orchestrator extends from STORYBOARD.md SFX cues
+- `shader_transitions: {bg_color, accent_color?, scenes[], transitions[]}` — NOT auto-emitted; the orchestrator adds this when the storyboard calls for HyperShader transitions (invariant: `scenes.length === transitions.length + 1`)
 
-### Brand-floor check (whole-video, after every beat passes its own read)
+What the assembler writes:
 
-- First beat references a brand logo / wordmark SVG from `capture/assets/svgs/`
-- Last beat references the brand logo / wordmark
-- If either is missing without an explicit STORYBOARD.md override (e.g. "opener is pure kinetic type"), fix it — videos that don't open or close on the brand are failing their job.
+- `index.html` — root composition at `{width}×{height}`, GSAP CDN tag (no SRI — engine contract), optional `<script src="hyper-shader-local.js">` when `shader_transitions` present, root `<div id="root" data-composition-id="main">` with host divs for scenes + audio tags
+- Track lanes (enforced by the assembler, do not collide):
+  - **0** — scene sub-comp host divs (one per beat)
+  - **10** — global narration `<audio>` (default voice mode)
+  - **11** — BGM `<audio>` (if `bgm_path` set)
+  - **12** — captions sub-comp host (when `compositions/captions.html` exists from `captions.mjs html`)
+  - **20+i** — SFX `<audio>` (one lane per cue, in `sfx[]` array order)
+- `caption-overrides.json` empty `[]` shim (silences a validate `✗`)
 
-Once every beat reads clean and the brand-floor check passes, move to Step 6 (Validate & Deliver) for lint, validate, snapshots, and visual review.
+Bootstrap script:
+
+- Without `shader_transitions`: vanilla `window.__timelines["main"] = gsap.timeline({paused: true})` (workers add per-beat tweens via their own sub-comp registrations).
+- With `shader_transitions`: `var tl = HyperShader.init({bgColor, accentColor, scenes, transitions})` + `window.__timelines["main"] = tl`. Scene host divs additionally carry `class="scene"` + inline `background-color: <bg_color>`.
+
+Worker contract change (post-cutover):
+
+- Workers write `compositions/beat-N-<slug>.html` with the root `<div data-composition-id="<sid>" data-duration="<X>">` carrying `data-duration` on the SUB-COMP ROOT itself (not the host div in index.html). The assembler's `DUR_EPSILON=0.01s` cross-check exits 1 on mismatch — fix is upstream (re-dispatch the worker), never in the assembled index.html.
+- Workers do NOT include `<script src=".../gsap">` or `<script src="hyper-shader-local.js">` inside their `<template>`. The assembler owns root `<head>`; duplicating scripts in beats double-loads GSAP and double-inits HyperShader.
+
+Hard-fatal conditions (assembler exits 1):
+
+- `group_spec.json` missing or unreadable
+- No scenes in `groups[].scene_ids`
+- A scene file missing on disk (`compositions/<sid>.html`)
+- Sub-comp root `data-duration` disagrees with `group_spec.estimatedDuration_s` beyond 0.01s
+- `shader_transitions.scenes.length !== transitions.length + 1`
+
+Once the assembler exits 0, move to Step 6 (Validate & Deliver). Step 6 owns the top-to-bottom read of every beat HTML against DESIGN.md / STORYBOARD.md — Step 5's previous "read everything" gate was duplicated work and has been folded into Step 6's per-beat verdict pass.

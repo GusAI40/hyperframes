@@ -10,6 +10,8 @@ No API keys required for the base capture. However, before running, ask the user
 
 If the user provides the key or already has one set, proceed. If they skip it, proceed anyway — the capture works without it, but `asset-descriptions.md` will have DOM-context descriptions only (position, size, alt text) instead of AI vision descriptions (what the image actually shows).
 
+> **⚠ Gemini key flagged as leaked (403):** If `asset-descriptions.md` shows bare entries like `icon: icon 0` / `icon: icon 1` instead of prose captions, the Gemini key returned 403. The most common cause is the shipped key has been reported as leaked by Google. The `snapshot` command can also OVERWRITE `descriptions.md` with the 403 error text (destructive). Rotate the key in `.env` and re-run, OR proceed and rely entirely on contact-sheet pixel inspection in Step 3 — captions are an aid, not load-bearing.
+
 Create a project directory for your video if it doesn't exist yet, then capture the website into a `capture/` subfolder within it:
 
 ```bash
@@ -58,13 +60,31 @@ Read every file below. After each one, **write a 3-4 sentence summary** of what 
 
 10. **`capture/extracted/shaders.json`** — If present, this contains the actual GLSL shader code that powers the site's WebGL visual effects (gradient waves, particle systems, noise fields). Read the fragment shaders to extract: color values used in gradients, noise algorithms, blend functions. You are able to recreate similar effects in your compositions using Canvas 2D, Three.js, HTML-in-canvas or by embedding the shader patterns with a `<canvas>` + WebGL context. Absolutely read the patterns in `techniques.md`!!
 
+### Captured asset filenames — when to trust, when to verify
+
+As of June 2026, captures emit content-addressable filenames in the shape `<role>-<slug>-<hash8>.<ext>` — e.g. `partner-logo-amazon-2TeU5qiM.svg`, `header-logo-airbnb-EfGh5678.svg`, `hero-product-shot-i9j0k1l2.png`. The `slug` portion comes from explicit DOM signals (alt text → aria-label → enclosing `<a href>` → URL path), NOT from heading proximity. The 8-char `hash` is a SHA-256 of the bytes — same SVG bytes always produce the same filename across captures.
+
+**Trust levels:**
+
+- **HIGH trust** — filename has the `<role>-<word>-<hash>` shape where `<word>` is a real brand word (`amazon`, `figma`, `stripe-logo`, `hero-dashboard`). The slug came from alt/aria/href, so the brand attribution is the site's own self-declaration. You can grep these for partner walls (`partner-logo-*`), brand mark (`header-logo-*`), nav (`nav-icon-*`), heroes (`hero-*`).
+- **MODERATE trust** — filename is `<role>-<idx>-<hash>` (e.g. `icon-27-aB12CdEf.svg`, `logo-10-x4mcSXGJ.svg`). No semantic signal was available, but the file is still content-identified by the hash. Same hash across runs = same bytes.
+- **LOW trust — verify before using as brand-critical** — legacy captures without the `-hash` suffix, UUID-named assets, anything where the slug looks like a stale class name (e.g. `flex-N.svg`, `sx-1fwcy2r.svg` if you see them — older captures, or assets the new path missed).
+
+**Operational rules:**
+
+- For non-critical assets (decorative SVGs, secondary illustrations): trust the filename pattern, pick by inspecting contact-sheet thumbnails. Don't open every file.
+- For brand-critical assets (header logo, primary hero illustration that the closer/opener depends on): even at HIGH trust, OPEN the file individually and confirm — the cost of shipping the wrong brand mark is high. This is still the one carve-out from the on-demand rule below.
+- Verify each chosen path EXISTS in the directory listing (`ls capture/assets/svgs/`, etc.) before writing it into a composition. The directory listing is the ground truth — not the filename grep, not the Gemini caption.
+- **Historical pitfall (still possible on legacy captures):** 8 of 12 multi-URL runs in 2026-04→05 hit mislabeled SVGs (`heygen-logo.svg` rendering Google, `nvidia-logo.svg` rendering Autodesk, etc.) because the old pipeline derived slugs from `nearestHeading`. That signal was demoted to lowest-priority in 2026-06; new captures don't have this failure mode. If a capture predates 2026-06 you may still see it.
+- Captured SVGs may have malformed path data that fails `hyperframes validate` (e.g. fused command-letter tokens like `8.48848C68.2079`). If a captured logo's `d=` attribute is unrenderable, REPLACE the gnarly path with a clean hand-authored shape — do not try to repair the captured `d` token-by-token.
+
 ### Required On-demand (only when actually needed in Step 5)
 
-11. **Individual images in `capture/assets/`** — The contact sheet pages cover all assets. Only open an individual file when:
+11. **Individual images in `capture/assets/`** — Brand-critical assets (logo, hero illustration) ARE verified now per the rule above. For everything else, the contact sheet pages cover them; only open an individual file when:
     - You are placing text over a screenshot and need to check the safe zone / exact content at full resolution
     - A storyboard-assigned asset's contact sheet thumbnail is too small to judge its content
 
-    Do NOT batch-view individual assets at this stage. That is what the contact sheets are for.
+    Do NOT batch-view non-critical individual assets at this stage. That is what the contact sheets are for.
 
 ### For rich captures (30+ images)
 

@@ -1,6 +1,23 @@
 # Beat Builder Guide
 
-You are building ONE beat of a multi-beat video composition. This file tells you what to read, how to build, how to verify, and how to report back.
+**INPUT:** Dispatch context — top-level: `BEAT_NUMBER` / `PROJECT_DIR` / `BEAT_FILE` (target path the main agent assigned, usually `compositions/beat-N-<slug>.html`) / `Dispatch packet: /tmp/w2h-dispatch/b<N>.txt` (shared header + this beat's spec); per beat: `concept` / `mood` / `vo_cue` / `start_s` / `duration_s` / `techniques[]` / `assets[]` / `text_effects[]` / `brand_values_paste` / `prev_beat_handoff` / `next_beat_handoff` / `sfx[]` / `motion_floor`.
+**OUTPUT:** `$PROJECT_DIR/$BEAT_FILE` (one file — the beat composition).
+**TOOLS:** Skill `hyperframes` (load it; every rule matters) + `capabilities.md` (TOC scan, on-demand deep-dive) + `techniques.md`/`text-effects.md`/`transitions.md` (read only what `techniques[]` lists) · Read · Write · Edit · Bash (lint + grep self-check).
+**DONE:** File written + `npx tsx packages/cli/src/cli.ts lint .` zero errors + all self-check grep assertions pass → concrete one-paragraph report (hex codes used, asset paths placed, headline `font-size`, last `tl.fromTo` timestamp). No "0 errors, looks good." reports — those are the chat reports that shipped prior videos with mismatched brand colors and missing logos.
+
+You are building ONE beat of a multi-beat video composition, running in parallel fan-out with sibling beat workers. You CAN read STORYBOARD.md + DESIGN.md + sibling beat files when continuity demands it (motif callbacks, color carry-through, recurring elements) — w2h is a continuity-heavy genre. But default to the dispatch packet first; only widen reads when the packet doesn't carry the cross-beat context you need.
+
+After writing, run the self-check grep block at the END of this guide. If any FAIL hits, fix before reporting. Step 6 validate uses the same harness; catching locally saves a round-trip.
+
+## Pre-Write Cheat Sheet (scan before typing; saves 15-20% rework)
+
+Four hidden pitfalls account for most rework in a single beat run — scan them before starting:
+
+1. **Frame-0 black trap.** Any opacity tween starting at t=0 (`tl.fromTo(el, {opacity:0}, {opacity:1}, 0)`) renders black under seek. Put the visible state in INLINE `style="opacity:1"` and animate transforms only (scale/translate/rotate).
+2. **Asset paths are root-relative** — `capture/assets/foo.svg` ✅ / `../capture/assets/foo.svg` ❌. The Studio preview rewrites base URLs; `../` paths 404 at render.
+3. **GSAP `from()` + CSS `opacity:0` on the same element animates 0→0 forever.** Use `tl.fromTo()` with an explicit start state OR remove the CSS opacity:0.
+4. **Trust filenames by pattern, not by name.** New-format names `<role>-<word>-<hash>.svg` (e.g. `partner-logo-amazon-2TeU5qiM.svg`, `header-logo-airbnb-EfGh5678.svg`) are content-addressable — slug came from alt/aria/href, not heading proximity. Trust them. Names like `icon-27-XYZ.svg` are content-identified but slug-less — fine for non-critical use. **Still open and verify any brand-critical logo (header-logo, primary hero) before referencing it** — the cost of the wrong brand mark on the closer is high even at high trust. Legacy captures (no hash suffix, UUID names, `sx-…`/`flex-N` class-name leaks) keep the old "verify everything" rule.
+5. **`data-duration` on YOUR root `<div>` inside the `<template>` must equal the dispatch `estimatedDuration_s` to within 0.01s.** The assembler at the end of Step 5 cross-checks this and **exits 1 on mismatch** — your beat will never make it to the index.html. No more `data-duration` on host divs in `index.html` (that's the legacy cell-A pattern; the assembler owns the host div now). Also: do NOT include `<script src=".../gsap…">` or `<script src="hyper-shader-local.js">` in your `<template>` — the assembler emits both at root.
 
 ## Step 1: Read and understand
 
@@ -21,7 +38,6 @@ You are building ONE beat of a multi-beat video composition. This file tells you
 | [transitions/](../../hyperframes/references/transitions/)                             | 14 CSS transition category files: push, scale, dissolve, blur, 3D flip, light leak, distortion, grid, mechanical, destruction | Beat uses CSS transitions                         |
 | [css-patterns.md](../../hyperframes/references/css-patterns.md)                       | Text markers: highlight sweeps, hand-drawn circles, burst lines, scribble, sketchout                                          | Beat uses text emphasis/markers                   |
 | [audio-reactive.md](../../hyperframes/references/audio-reactive.md)                   | Bass→scale, mid→shape, treble→glow mappings                                                                                   | Beat reacts to music/audio                        |
-| [captions.md](../../hyperframes/references/captions.md)                               | Per-word karaoke, tone-adaptive styling, positioning                                                                          | Beat includes captions                            |
 | [typography.md](../../hyperframes/references/typography.md)                           | Font hierarchy, variable fonts, responsive type scaling                                                                       | Beat has complex typography                       |
 | [motion-principles.md](../../hyperframes/references/motion-principles.md)             | Velocity matching, easing philosophy, motion continuity                                                                       | Beat needs polished motion design                 |
 | [dynamic-techniques.md](../../hyperframes/references/dynamic-techniques.md)           | Counter animations, data-driven visuals, dynamic content                                                                      | Beat has counters or data visualization           |
@@ -45,49 +61,66 @@ You are building ONE beat of a multi-beat video composition. This file tells you
 
 ## Step 2: Build the composition
 
-Save to the path the main agent specified (usually `compositions/beat-N-name.html`).
+Save to the path the main agent specified (usually `compositions/beat-N-<slug>.html`). Copy-paste this starter and fill in the named placeholders. Every attribute, ID, and timeline key shown is load-bearing — the assembler (final action of Step 5) hard-fails if `data-duration` drifts from your dispatch packet's `estimatedDuration_s` by more than 0.01s.
 
 ```html
-<template>
+<template id="beat-N-name-template">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    /* your styles */
+    /* Scope every selector with a beat-prefix class (e.g. .bN-title) so styles
+       can't leak into sibling beat compositions. */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    .bN-root { width: 1920px; height: 1080px; position: relative; overflow: hidden; background: #YOUR_BG; }
+    .bN-title { font-size: 96px; line-height: 1.05; font-weight: 700; color: #YOUR_FG; }
+    /* …your beat-scoped styles… */
   </style>
 
+  <!-- Root sub-comp div. data-duration MUST equal estimatedDuration_s from your dispatch packet within 0.01s. -->
   <div
     id="beat-N-name"
+    class="bN-root"
     data-composition-id="beat-N-name"
     data-width="1920"
     data-height="1080"
-    style="width:1920px; height:1080px; position:relative; overflow:hidden; background:#YOUR_BG;"
+    data-duration="5.5"
   >
-    <!-- your elements -->
+    <!-- Subject visible in DOM via inline style="opacity:1" — overrides any CSS opacity:0,
+         lets your timeline animate transforms only (avoids the frame-0 black trap). -->
+    <h1 class="bN-title" style="opacity:1" data-layout-role="primary">YOUR HEADLINE</h1>
+    <!-- …your elements… -->
   </div>
 
   <script>
     (function () {
-      var BEAT = 5.5; // MUST match data-duration on the host div in index.html
+      var BEAT = 5.5; // MUST equal data-duration above, to the centisecond.
       window.__timelines = window.__timelines || {};
       var tl = gsap.timeline({ paused: true });
 
-      // your GSAP animations
+      // Entrance — transform-only (no opacity tween at t=0).
+      tl.fromTo(".bN-title", { scale: 0.92, y: 40 }, { scale: 1, y: 0, duration: 0.6, ease: "power4.out" }, 0);
 
+      // Hold motion — camera dolly across the full beat (continuous motion rule).
+      tl.fromTo(".bN-root", { scale: 1.0 }, { scale: 1.06, duration: BEAT, ease: "none" }, 0);
+
+      // Register synchronously — the key MUST match data-composition-id above.
       window.__timelines["beat-N-name"] = tl;
     })();
   </script>
 </template>
+<!-- DO NOT include <script src="…gsap…"> or <script src="hyper-shader-local.js"> inside this template.
+     The assembler emits both at root; duplicating them double-loads GSAP and double-inits HyperShader. -->
 ```
 
-**Critical:** `data-composition-id`, `data-width`, `data-height` on the root div MUST match the host div in index.html.
+**Three-way match check** — these three strings MUST all be identical:
+1. Root `<div data-composition-id="…">` (this file)
+2. Timeline registration `window.__timelines["…"]` (this file)
+3. Dispatch packet's beat id / `BEAT_FILE` slug (main agent assigned)
+
+If any drift between them, the renderer can't bind the timeline to the host and the beat ships black.
 
 ## Step 3: Lint
 
 ```bash
-npx hyperframes lint .
+npx tsx packages/cli/src/cli.ts lint .
 ```
 
 Fix ALL errors. Zero errors required.
@@ -114,6 +147,84 @@ After lint passes, snapshots are taken, and you've fixed every issue you saw —
 **The main agent will OPEN your composition file and read it top-to-bottom** to cross-check against DESIGN.md and STORYBOARD.md — does the brand bg/accent hex actually appear in your CSS, are the captured assets the storyboard called for actually referenced, is the headline ≥80px, does the GSAP timeline cover the full beat duration. You cannot pass that check by claiming things you didn't do; the file is on disk, the truth is in the file.
 
 So in your report, name the hex codes you used, the captured asset paths you placed, the headline `font-size`, and the GSAP timeline's last `tl.fromTo(...)` timestamp. Brief, concrete, true. If anything diverges from DESIGN.md or the storyboard, say so explicitly — the main agent can decide whether to accept the divergence or send you back to fix it. Surprises caught at this hand-off cost minutes; surprises caught at Step 6 cost iterations.
+
+---
+
+## Known landmines for sub-agents — read first
+
+Sub-agent fan-outs hit a stable set of bugs that lint-clean compositions cannot catch. Read these before you touch the file. Each rule names a single failure mode and the one-line fix.
+
+### 1. Write only to your assigned filename
+
+Sub-agents share a project directory. A concurrency race in cell-A wiped `beat-4-pillars.html` mid-build and left an orphan `_beat5-standalone.html`. Each sub-agent writes to a unique, pre-allocated filename — `compositions/beat-N-<slug>.html` exactly as the orchestrator named it in your dispatch prompt. Never write to, rename, or delete a sibling sub-agent's file. The orchestrator owns the merge.
+
+### 2. `s-end` and any "dummy" host div needs a real composition file
+
+A bare `<div data-composition-id="s-end">` in root `index.html` with no `data-composition-src` and no template throws `FrameCapture: Sub-composition timelines not registered after 45000ms: s-end`. The renderer stalls 45 seconds per attempt waiting for a timeline that never registers.
+
+Give every host div a real `compositions/<id>.html` with at minimum a template + `window.__timelines['<id>'] = gsap.timeline({ paused: true })` registration. If `s-end` is a 1-second black tail card, it still needs that file.
+
+### 3. `<style>` inside the root div DOES render — don't second-guess this
+
+Verified in cell-A raycast beat-6 (with a `system-ui` fallback). Sub-agents sometimes refuse to scope styles to the root, fearing they'll be stripped. They won't be. Inline `<style>` blocks inside the root composition div render correctly.
+
+### 4. Re-read DESIGN.md and STORYBOARD.md before you start
+
+You think you remember them from the orchestrator's prompt. You don't — not the exact hex values, not the specific brand font name, not the headline copy verbatim, not the beat duration. Re-read them now so your output matches.
+
+---
+
+## Layout annotations — opt-in markers for the perception gate
+
+Step 6 runs `scripts/check-rendered-perception.mjs` (Puppeteer + GSAP `tl.seek(t, false)` at 3 probes/scene). It detects 8 perception failure classes that lint can't catch — text-clipping, depth-layer ghosts, primary-collision, cross-text-collision, primary-offscreen, content-cramped-container, low-contrast-foreground, font-too-small.
+
+The gate reads optional authoring annotations to know what's a primary subject vs decoration, what's allowed to bleed off-canvas, and what to ignore. **Adding these to your beat is opt-in but recommended** — without them, primary-collision and primary-offscreen checks vacuously pass, and intentional bleed/zoom scenes false-fire text-clipping warnings.
+
+### `data-layout-role="primary"` — mark the foreground
+
+Put on each headline / title / CTA text span the beat is built around. Multiple primaries in the same act → primary-collision check fires if their bboxes overlap >5%. Without this attribute, Check 3a silently no-ops.
+
+```html
+<h1 class="b2-title" data-layout-role="primary">Stop context-switching.</h1>
+<button class="b2-cta" data-layout-role="primary">Get started →</button>
+```
+
+### `data-layout-act="<name>"` — group primaries by temporal phase
+
+When two primaries appear in the same time window (overlapping `tl.fromTo` durations), give them the same `data-layout-act` value so the collision check knows they share a frame. Per-beat default: omit unless your beat has temporally overlapping primaries (most don't — one phase per beat is the common case).
+
+```html
+<h1 data-layout-role="primary" data-layout-act="hero">SHIP FASTER</h1>
+<p  data-layout-role="primary" data-layout-act="hero">Together with your team.</p>
+```
+
+### `data-layout-allow-overflow="true"` — let decoration bleed
+
+On a scene-bleed wrapper that intentionally extends past 1920×1080 (camera zoom, slot-machine ticker, parallax sweep). Skips text-clipping (Check 1) and cramped-container (Check 6) for that subtree.
+
+```html
+<div class="b3-camera-zoom" data-layout-allow-overflow="true">
+  <!-- camera dolly content; intentionally bleeds at zoom peak -->
+</div>
+```
+
+### `data-layout-bleed="true"` — primary intentionally bleeds
+
+On a primary text that you deliberately want clipped (e.g. an oversized hero word). Skips primary-offscreen (Check 4) for that element only.
+
+```html
+<h1 class="b1-belo" data-layout-role="primary" data-layout-bleed="true">BÉLO</h1>
+```
+
+### `aria-hidden="true"` — decoration the gate should skip
+
+Standard ARIA, but the perception gate uses it as a hint to skip contrast/offscreen/cramped checks. Apply to decorative SVGs, mesh gradients, depth-shadow layers, glow orbs — anything that's purely visual texture.
+
+```html
+<svg class="b2-bg-mesh" aria-hidden="true">…</svg>
+```
+
+The gate also recognizes a decorative-class regex (`bg|background|drifter|glow|halo|chip|accent|tile|ghost|gradient|...`) — if your decorative element's class name matches that vocabulary, `aria-hidden` is redundant but harmless. When in doubt, add `aria-hidden`.
 
 ---
 
@@ -170,7 +281,7 @@ If any are missing from the beat spec, the beat is under-defined. Don't fill the
 - SCRIPT PLACEMENT: scripts inside `<template>`, never after `</template>`. Scripts outside see no DOM.
 - GSAP FROM TRAP: never `gsap.from(el, {opacity:0})` with CSS `opacity:0`. It animates 0→0. Use `tl.fromTo()`.
 - STYLE: avoid CSS `opacity:0` on GSAP-animated elements. Use GSAP fromTo for initial states.
-- ASSET PATHS: project-root-relative. `capture/assets/file.png` ✅ `../capture/assets/file.png` ❌
+- ASSET PATHS: project-root-relative. `capture/assets/file.png` ✅ `../capture/assets/file.png` ❌ (canonical rule: [step-5-build.md](./step-5-build.md) "ASSET PATHS" — single source of truth.)
 - SVG VIA IMG: `<img src="logo.svg">` can't inherit CSS color. Inline SVG or `filter: brightness(0) invert(1)`.
 - CSS CENTERING: no `transform: translate(-50%, -50%)` with GSAP transforms. Use flexbox or `xPercent/yPercent`.
 - QUERYSELECTOR: `document.getElementById("id")` with null guards. No method calls without null check.
@@ -197,3 +308,68 @@ Do NOT default to `power2.out` on everything.
 | Drift           | `"none"`              | Parallax, Ken Burns, camera drift    |
 
 Staggered items: `power4.out` with `stagger: 0.08` to `0.15`.
+
+---
+
+## DONE-criterion: self-check grep block
+
+After writing your beat file and before reporting back, RUN this Bash block exactly. **If any line prints `FAIL:`, fix it and re-run.** Only report DONE when the block prints zero `FAIL:` lines. Step 6 validate re-runs the same checks against every beat — catching them here saves a re-dispatch round-trip.
+
+Replace `<BEAT_FILE>` with the path the main agent assigned (e.g. `compositions/beat-3-feature-tour.html`) and `<COMP_ID>` with the beat's `data-composition-id`:
+
+```bash
+F="$PROJECT_DIR/<BEAT_FILE>"
+CID="<COMP_ID>"
+
+# 0. File exists and is non-empty
+[ -s "$F" ] || echo "FAIL: empty/missing $F"
+
+# 1. Root contract — composition-id present (template wrapper for sub-comps, root attrs match)
+grep -q "data-composition-id=\"$CID\"" "$F" || echo "FAIL: missing data-composition-id=\"$CID\""
+grep -q "data-width=\"1920\"" "$F"            || echo "FAIL: missing data-width=\"1920\""
+grep -q "data-height=\"1080\"" "$F"           || echo "FAIL: missing data-height=\"1080\""
+grep -q 'data-duration="'  "$F"               || echo "FAIL: missing data-duration"
+
+# 2. Timeline registration — window.__timelines["<comp-id>"] must be set synchronously
+grep -qE "window\.__timelines\[[\"']${CID}[\"']\]\s*=" "$F" \
+  || echo "FAIL: window.__timelines[\"$CID\"] not registered — host id / inner data-composition-id / timeline key must be a three-way match"
+
+# 3. Frame-0 black trap — no opacity tween starting at t=0
+grep -nE 'tl\.(from|fromTo|set)\([^)]*opacity\s*:\s*0[^)]*,\s*0\s*[,)]' "$F" \
+  && echo "FAIL: opacity tween at t=0 → frame 0 renders black under seek. Use inline style=\"opacity:1\" + transform-only entrance."
+
+# 4. Asset paths root-relative — no ../capture/
+grep -nE '(src|href|url\()\s*=?\s*["\']?\.\./capture/' "$F" \
+  && echo "FAIL: relative ../capture path → Studio preview rewrites base URL; will 404 at render. Use capture/assets/..."
+
+# 5. Determinism contract — forbidden tokens
+grep -nE 'Math\.random|Date\.now|requestAnimationFrame|repeat:\s*-1|Math\.ceil\([^)]*\)\s*-\s*1' "$F" \
+  && echo "FAIL: deterministic-contract violation above. Math.random/Date.now/rAF/repeat:-1/Math.ceil(...)-1 all forbidden. Use literal integer repeat = floor(T/cycle)-1 computed at design time."
+
+# 6. GSAP from() + CSS opacity:0 — 0→0 trap (only when both present)
+if grep -qE 'tl\.from\([^)]*opacity\s*:\s*0' "$F" && grep -qE '\.[a-zA-Z][a-zA-Z0-9_-]*\s*\{[^}]*opacity\s*:\s*0' "$F"; then
+  echo "FAIL: tl.from(opacity:0) + CSS opacity:0 → animates 0→0 forever. Use tl.fromTo() with explicit start state, or remove CSS opacity:0."
+fi
+
+# 7. Stale CDN tag — GSAP must be the pinned no-SRI URL (engine inlines it via URL-pattern match)
+if grep -q '<script[^>]*gsap' "$F"; then
+  grep -qE '<script src="https://cdn\.jsdelivr\.net/npm/gsap@3\.14\.2/dist/gsap\.min\.js"></script>' "$F" \
+    || echo "FAIL: GSAP <script> tag must be exactly the pinned URL with NO SRI. integrity= or version drift breaks the compiler inline step."
+fi
+
+# 8. Headline floor — flag text-only beats with hero text < 80px (skip if beat is an image-hero per storyboard)
+HEADLINE_PX=$(grep -oE 'font-size:\s*[0-9]+px' "$F" | grep -oE '[0-9]+' | sort -nr | head -1)
+if [ -n "$HEADLINE_PX" ] && [ "$HEADLINE_PX" -lt 80 ]; then
+  echo "WARN: largest font-size is ${HEADLINE_PX}px — hero text floor is 80px. Skip this warning if beat hero is an image, not text."
+fi
+
+# Structural evidence (must be ≥ 1 each)
+grep -c "data-composition-id=\"$CID\"" "$F"    # host contract
+grep -c "window.__timelines"            "$F"   # at least one timeline registration
+```
+
+Counter-line outputs (numbers) at the end are evidence the file has the right shape; FAIL/WARN lines are what to fix. If the block prints anything but counters, fix and re-run.
+
+The main agent will re-run this same block against your file at the Step 5 reconciliation gate. Don't ship without running it locally.
+
+After all beats land, the main agent runs `scripts/preflight-finalize.mjs` — a Bash orchestrator that re-runs lint + validate + inspect globally plus a real-frame perception probe (Puppeteer + GSAP seek at 3 probes/scene). It writes `finalize_brief.json` with per-violation `edit_old`/`edit_new` strings. If your beat fails the perception check (text-clipping, primary-collision, primary-offscreen, content-cramped-container, contrast < 2.5:1, font < 24px), expect a re-dispatch with the violation's old/new pair attached — apply it as-is, do not re-derive the geometry.

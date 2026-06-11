@@ -14,11 +14,15 @@ Capture a website, then produce a professional video from it — collaboratively
 
 **Autonomous mode exception:** If the user says "decide for me", "just build it", "surprise me", or gives any signal they don't want to be asked questions — skip ALL 💬 gates. Make all creative decisions yourself (video type, style, voice, storyboard), and present the finished result for feedback at the end. Do not ask four separate questions across four separate steps. Read the room once and commit.
 
-**Sub-agent mode (default):** Step 5 dispatches one sub-agent per beat. Each sub-agent reads [beat-builder-guide.md](references/beat-builder-guide.md), builds, lints, snapshots, and verifies its own beat before reporting back. The main agent assembles the final video and does a final check.
+**Sub-agent mode (default):** Step 5 dispatches one sub-agent per beat. Each sub-agent reads [beat-builder-guide.md](references/beat-builder-guide.md), builds, lints, and verifies its own beat before reporting back. The main agent assembles the final video and does a final check. Snapshots happen in Step 6 only — sub-agents do not run snapshot themselves. **All CLI invocations must use the local CLI form `npx tsx packages/cli/src/cli.ts <cmd>`** (see the CLI table below). The published `npx hyperframes` package may lag the worktree by weeks; the local CLI always reflects the current code.
 
 **No sub-agents:** If the user says "no sub-agents", "build it yourself", or the runtime doesn't support parallel agents — the main agent builds all compositions sequentially using the same beat-builder-guide workflow. Same quality, just slower.
 
 **This skill requires image-viewing capability** for the validate step (Step 6). If your agent cannot view PNG files, the snapshot review will be blind. Contact sheets (Step 0 and Step 6) are designed to minimize the number of images needed — but some visual verification is unavoidable.
+
+**Compact user-facing output.** Every message to the user is short by default — single-paragraph answers, terse summaries at 💬 gates, tight bullet lists. No multi-section breakdowns, no preamble, no recap of what you just did. The full reasoning lives in the artifacts (DESIGN.md / STORYBOARD.md / SCRIPT.md / etc.); the chat message points at the artifact and asks the next question. Users don't read walls of text — and a wall of text right before a 💬 gate buries the question.
+
+**🚫 NEVER render to verify.** `render` is a user-triggered final action, not a verification primitive. Across all 7 steps, every check has a non-MP4 path: `lint` / `validate` / `inspect` (static), `check-rendered-perception.mjs` (Puppeteer seek → JSON), `snapshot` (PNG + Gemini descriptions), `ffmpeg volumedetect` on source `narration.wav` / `sfx/*.wav`. Do NOT call `render` to spot-check a beat, measure audio, inspect a frame, or confirm a fix. Only invoke `render` when the user explicitly says "render it" / "export the mp4" / "make the final". Anything else is wasted minutes.
 
 ---
 
@@ -42,32 +46,11 @@ Users say things like:
 
 ## Step -1: What we're actually making (REQUIRED before Step 0)
 
-You're not making _a video_. You're making something that **stops scrollers** in the first 1.5 seconds and **feels alive in every single frame** — with motion, depth, momentum, like things exist in a physical world. **Think about how to go viral.** Slow intros are for cinematic trailers; videos shipping anywhere social or feed-based need a hook that beats the 1.5-second scroll threshold.
+You're not making _a video_. You're making something that **stops scrollers in the first 1.5 seconds** and feels alive in every single frame. Slow intros are for cinematic trailers; videos shipping anywhere social or feed-based need a hook that beats the 1.5-second scroll threshold. **Think about how to go viral.**
 
-**Use the captured assets.** Open every SVG in `capture/assets/svgs/`. Open every illustration in `capture/assets/`. Read the descriptions in `capture/extracted/asset-descriptions.md`. Many of these will carry beats outright — the brand logo SVG drawing itself stroke-by-stroke, the hero illustration breathing as ambient depth, the captured gradient as a full-bleed background, the brand mark stamped onto every scene as identity. These are video gold. The capture exists because the brand's actual visual identity matters; using it is what makes the video feel like _this_ brand and not a generic dark cinematic template.
+**This is a VIDEO, not a webpage rebuilt in divs.** Composing UI from divs/SVG/CSS (instead of pasting product screenshots) is the right _medium_ — but the wrong outcome is to build a webpage-style layout and animate it 2 pixels. Videos use cinematic grammar: framing, depth, camera movement, scale, atmosphere. A kanban in a video is not "a kanban centered at 80% scale with cards breathing 1px" — it's a SHOT: extreme close-up on a card sliding home, camera pulls back to reveal the full board, ambient particles + glow + depth give it weight. The composed divs are the subject; the cinematography is what makes it feel like film.
 
-**Compose when there's no captured asset that fits.** For product UI sections where a clean captured asset doesn't exist (kanban boards, chat threads, dashboards, terminals, counters, code editors), build them from divs/SVG/CSS rather than pasting a screenshot. SVG path drawing, kinetic typography, counter animations via `tl.set()`, layered panels, shader-driven gradients — these are all part of HyperFrames' toolkit when no captured asset earns the beat.
-
-**The screenshot trap is specifically about raw product-UI screenshots being pasted as full-bleed beat content.** Captured SVGs, illustrations, logos, hero art, gradients, photography — none of these are screenshots. They're brand assets. Use them. The trap is the "full-bleed dashboard.png + Ken Burns + voiceover" slideshow pattern, not the careful use of captured brand artifacts.
-
-**This is a VIDEO, not a webpage rebuilt in divs.** Composing from divs is the right _medium_ (no screenshots) — but the WRONG outcome is to build a webpage-style layout and animate it 2 pixels. Videos use cinematic grammar: framing, depth, camera movement, scale, atmosphere. A kanban in a video is not "a kanban board centered in the frame at 80% scale with cards breathing 1px" — it's a SHOT: extreme close-up on a card sliding home, then the camera pulls back to reveal the full board, ambient particles + glow + depth give it weight. The composed divs are the subject; the cinematography is what makes it feel like film.
-
-**Specific anti-patterns to refuse, every time:**
-
-- **macOS window chrome** (traffic-light dots, address bars, browser tabs, breadcrumbs) unless the beat IS about the window/browser as the subject
-- **Centered layout with chrome around it** — sidebar + header + content area + footer — that's a screenshot reproduced in CSS, not a shot
-- **"Breathing" micro-animations** (y: ±1–2px, scale: 1.01) — invisible at 1080p/4K video scale, useless as motion, a sign the sub-agent ran out of ideas
-- **Page-level navigation** — sidebars, headers, footers, breadcrumbs, "back" arrows unless the beat is specifically demonstrating navigation
-- **"Settled" beats** where nothing moves except a counter pulse — every beat must have continuous, _visible_ motion across the entire duration
-
-**Video grammar to USE in every beat:**
-
-- **Frame the beat as a SHOT** — close-up / medium / wide / over-the-shoulder / Dutch angle. Pick deliberately, not "centered."
-- **Camera motion is a primary element** — dolly in, push, parallax pan, orbit, pull-back. The camera moves THROUGH the composition; the composition doesn't sit still in front of the camera.
-- **Scale as energy** — enter at 1.4× and settle to 1.0; extreme close-up that pulls back to wide; the subject grows or shrinks through the beat
-- **Depth layers** — ambient background atmosphere, focal midground subject, accent foreground element — each moving at different parallax speed
-- **Light as choreography** — glow tracks the subject, key moments lit with bloom, transitions happen through light shifts
-- **Real motion magnitudes** — 30–100px movements, 0→1 opacity reveals, 0.7→1.0 scale changes — values that READ at video scale. Tiny micro-movements feel like a still image with twitches.
+This framing shapes Step 3 (storyboard) and the beat dispatch in Step 5. The operational rules — exact anti-patterns to refuse (macOS chrome, ±1-2px breathing, page nav, settled beats) and the cinematic grammar (SHOT framing, camera motion, depth layers, light choreography, 30-100px magnitudes) — live in [references/beat-builder-guide.md](references/beat-builder-guide.md) where sub-agents read them at author time. Captured-asset usage details live in [references/step-0-capture.md](references/step-0-capture.md).
 
 ---
 
@@ -85,39 +68,54 @@ Capture the site, then read the extracted data to understand the **brand and pro
 
 **Read:** [references/step-1-design.md](references/step-1-design.md)
 
-Write DESIGN.md — a brand cheat sheet covering the visual identity: colors, typography, component styles, layout principles. Use `design-styles.json` for exact computed values.
+Write DESIGN.md — a brand cheat sheet covering the visual identity: colors, typography, component styles, layout principles. Use `design-styles.json` for exact computed values. Target length is 250–350 lines per [step-1-design.md](references/step-1-design.md); the field-tested floor is ~200 lines below which output reverts to a generic dark-cinematic template.
 
-**Speed option:** For fast-pacing videos (billboard-per-beat), DESIGN.md can be a 50-line summary of colors + fonts + do's/don'ts — not a 300-line document. The sub-agent prompt in Step 5 pastes brand values directly, so DESIGN.md depth only matters for complex compositions.
-
-**Gate:** `DESIGN.md` exists (any length) with at minimum: color palette, font choices, and do's/don'ts.
+**Gate:** `DESIGN.md` exists at ~250–350 lines with all 6 sections per `step-1-design.md`.
 
 ---
 
-## Step 2: Strategy & Messaging
+## Step 2: Strategy & Messaging 💬
 
 **Read:** [references/step-2-brief.md](references/step-2-brief.md), [references/visual-vocabulary.md](references/visual-vocabulary.md), [references/capabilities.md](references/capabilities.md) (scan the Table of Contents — deep-dive sections only as needed)
 
 Align with the user on **what the video must communicate** before talking visuals or assets. Parse the user's prompt — they probably already gave you the video type and style. Ask only what's missing: the ONE thing this video must say, the narrative arc, and the audience.
 
-**Gate:** Video type, duration, format, and — critically — the message and narrative arc are locked. Without those, Step 3 can't write a concept-first storyboard.
+**Narration & on-screen text — ask once, here.** Among the brief questions, include this one:
+
+> Narration & on-screen text — pick one:
+> - **(a) Voiceover only** — a voice carries the video; no text overlay.
+> - **(b) On-screen captions/text** — the video narration appears as text on screen (subtitles/lower-thirds/kinetic type that mirrors the voice or carries it on its own).
+> - **(c) No narration text** — visuals + ambient/music carry it; nothing spoken or written.
+
+The answer drives both Step 4 (whether `narration.wav` + `transcript.json` are generated) and the captions step inside Step 5 (whether `captions.mjs` runs to produce `compositions/captions.html`). No mid-flow gate later.
+
+**Gate:** Video type, duration, format, the message + narrative arc, AND the narration/text choice from above are all locked.
 
 ---
 
-## Step 3: Storyboard + Script 💬
+## Step 3: Script + Storyboard 💬
 
 **Read:** [references/step-3-storyboard.md](references/step-3-storyboard.md)
 
-Write the storyboard concept-first: message → narrative arc → beats that serve the arc → techniques per beat → brand accents pass at the end. Then write the narration script to match. Present both to the user with a beat-by-beat summary. Iterate until they approve.
+Write the script first — the narration is the spine the video carries, and the beats must serve what's being said. Open with the hook (no "Welcome to…"), follow the narrative arc locked in Step 2, write to ~2.5 words/sec for the target duration. Save as `SCRIPT.md`.
 
-**Gate:** `STORYBOARD.md` + `SCRIPT.md` exist AND the user has approved the plan.
+Then derive the storyboard from the script: split the script into beats, write a beat per sentence-cluster or per arc-moment, pick 2–4 techniques per beat that serve what the narration is saying at that timestamp, do the brand-accents pass at the end. Save as `STORYBOARD.md`.
+
+Present a compact summary to the user: 1-line script gist + beat list (verb + visual + duration). Iterate until they approve.
+
+**Gate:** `SCRIPT.md` + `STORYBOARD.md` exist AND the user has approved the plan.
 
 ---
 
-## Step 4: VO, Timing + Captions 💬
+## Step 4: VO + Timing 💬
 
 **Read:** [references/step-4-vo.md](references/step-4-vo.md)
 
-If Step 2 said no narration — ask about background music, then skip to Step 5. Otherwise: ask the user which TTS provider (HeyGen TTS, ElevenLabs, or Kokoro), generate audio, transcribe, map timestamps to beats. Then ask about captions.
+If Step 2 said no narration (option c) — skip to Step 5. Otherwise (a or b): ask the user which TTS provider (HeyGen / ElevenLabs / Kokoro) in one compact question, generate full narration directly (no audition pass), transcribe (or use HeyGen's word timestamps), map timestamps to beats, reconcile timing.
+
+Captions/on-screen text was decided in Step 2 — do NOT re-ask here. If Step 2 picked option (b), `captions.mjs` will run automatically between Step 5 and Step 6 (see Step 5's "Captions are NOT your job" note).
+
+Music is deferred — w2h doesn't currently generate it; if the user supplies a track they'll say so. Don't ask.
 
 **Gate:** Either (a) no narration was requested and storyboard has manual beat timings, or (b) `narration.wav` + `transcript.json` exist and beat timings updated with real durations.
 
@@ -128,9 +126,20 @@ If Step 2 said no narration — ask about background music, then skip to Step 5.
 **Read:** The `hyperframes` skill (load it — every rule matters)
 **Read:** [references/step-5-build.md](references/step-5-build.md)
 
-Build index.html and compositions following the architecture and pacing chosen in the storyboard (Step 3). Sub-agents run `hyperframes lint` and `hyperframes snapshot` on each beat before reporting back.
+Build the **beat compositions** (`compositions/beat-N-<slug>.html`) following the architecture and pacing chosen in the storyboard (Step 3). Sub-agents run `npx tsx packages/cli/src/cli.ts lint .` on each beat before reporting back. The root `index.html` is NOT authored by workers — it's produced deterministically by `scripts/assemble-index.mjs` at the end of this step.
 
-**Gate:** **The main agent does NOT trust sub-agents' chat reports.** After every sub-agent completes, the main agent opens each `compositions/beat-N.html` and reads it top-to-bottom. For each beat: does the GSAP timeline use the data attributes correctly, do the brand colors from DESIGN.md actually appear in the CSS, are the captured assets the storyboard called for actually referenced, is the headline at video-readable size, does the beat serve the storyboard arc? Anything off — fix it inline or re-dispatch the sub-agent with the specific problem quoted.
+Sub-agents receive the dispatch packet (`/tmp/w2h-dispatch/b<N>.txt`) which contains DESIGN.md + STORYBOARD.md + SCRIPT.md + transcript.json. Workers read DESIGN.md for brand voice + component rules + iteration guide.
+
+**Final action — assemble the root composition:**
+
+```bash
+node skills/website-to-hyperframes/scripts/w2h-prep.mjs --hyperframes <project-dir>
+node skills/website-to-hyperframes/scripts/assemble-index.mjs --group-spec <project-dir>/group_spec.json --hyperframes <project-dir>
+```
+
+Track lanes are enforced by the assembler: scenes=0, narration=10, BGM=11, captions=12, SFX=20+i. If Step 2 picked on-screen captions, `captions.mjs group | html` also runs between worker beats and the assembler. HyperShader transitions are gated on `group_spec.shader_transitions` (orchestrator adds when storyboard calls for them).
+
+**Gate:** All sub-agents reported back, every beat's self-check grep block printed zero `FAIL:` lines, `assemble-index.mjs` exited 0, and `index.html` exists at the project root. The top-to-bottom read of every beat happens in Step 6 (post-preflight) — one verification pass, not two.
 
 ---
 
@@ -138,11 +147,19 @@ Build index.html and compositions following the architecture and pacing chosen i
 
 **Read:** [references/step-6-validate.md](references/step-6-validate.md)
 
-Lint, validate, take snapshots scaled to video length (formula: `max(beats × 3, ceil(duration_seconds / 2))`), and review each one. Fix issues before delivering. Deliver the localhost Studio project URL — only render to MP4 on explicit user request.
+Lint, validate, take snapshots scaled to video length (formula: `max(beats × 3, ceil(duration_seconds / 2))`), and review each one. Fix issues before delivering. Deliver the localhost Studio project URL.
+
+**🚫 NEVER render to verify anything.** Render is a user-triggered final action, not a verification primitive. Do NOT render to spot-check a beat, measure audio, inspect a frame, or confirm a fix. Every check has a non-MP4 path: `lint` / `validate` / `inspect` (static); `check-rendered-perception.mjs` (Puppeteer + GSAP seek → JSON, no MP4); `snapshot` (seeked PNG frames + Gemini); `ffmpeg volumedetect` on source `narration.wav` + `sfx/*.wav`. Only invoke `render` when the user explicitly asks ("render it", "export the mp4", "make the final"). Anything else is wasted minutes.
+
+**Preflight orchestrator:** `scripts/preflight-finalize.mjs` composes lint + validate + inspect + caption keep-out + rendered-perception into one Bash invocation with an exit-0/1/2 contract. Writes `finalize_brief.json` with each gate's pass/fail + edit-ready violation strings. **Exit 2 = BLOCKED:** at least one of lint/validate/inspect produced a hard error, OR `--require-perception` is set and puppeteer is missing. STOP — do not patch in finalize; fix the upstream beat file (or re-dispatch the worker), then re-run preflight. Override only with `--allow-gate-failure` if you want to chase gate errors during manual review.
+
+**Pre-render perception gate:** part of the preflight above. `scripts/check-rendered-perception.mjs` loads each beat in headless Chrome at 1920×1080, seeks the GSAP timeline at 3 probes/scene, and emits `perception_report.json` with 8 visual-failure classes — many with edit-ready `edit_old`/`edit_new` strings. Always exits 0 (informational); the orchestrator decides whether to block based on `--require-perception`.
+
+**Post-render gate:** the render output is verified deterministically by `scripts/verify-output.mjs render`, which checks file existence, size > 10KB (catches header-only renders), and duration drift < 0.5s vs `group_spec.total_duration_s` (emitted by `scripts/w2h-prep.mjs`). Exit 1 means do not proceed to publish.
 
 **Deliver something you're proud of.** Before handing off, ask yourself: would I post this on social media with my name on it? If not, fix what's wrong.
 
-**Gate:** `npx hyperframes lint` and `npx hyperframes validate` pass with zero errors, and the final response includes the active Studio project URL.
+**Gate:** `preflight-finalize.mjs` exits 0 (gates clean + caption keep-out + perception), `verify-output.mjs render` exits 0 (on render-on-demand), and the final response includes the active Studio project URL.
 
 ---
 
@@ -170,11 +187,30 @@ Beat count is not in this table intentionally — it should come from the storyb
 
 ### User Interaction Points
 
-| Step                         | What to ask                                                 | Why                                                                                    |
-| ---------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Step 2 (Strategy)            | Message, narrative arc, audience, video type, style, format | The story is what every downstream choice flows from. Without it, beats are arbitrary. |
-| Step 3 (Storyboard + Script) | Beat-by-beat approval, script review                        | Cheapest place to iterate. 30s to change a beat, 5min to rebuild a composition.        |
-| Step 4 (VO)                  | TTS provider choice, API key if needed                      | Voice quality makes or breaks the video. User may have provider preferences.           |
+| Step                         | What to ask                                                                                | Why                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| Step 2 (Strategy)            | Message, narrative arc, audience, video type, style, format, narration & on-screen text    | The story is what every downstream choice flows from. Captions decision belongs here, not Step 4. |
+| Step 3 (Script + Storyboard) | Script approval first, then beat-by-beat approval                                          | Script drives the beats. Iterating on the script is 30s; iterating on a built beat is 5min. |
+| Step 4 (VO)                  | TTS provider choice, API key if needed                                                     | Voice quality makes or breaks the video. User may have provider preferences.           |
+
+### CLI invocations & known footguns
+
+**Always use the local CLI form: `npx tsx packages/cli/src/cli.ts <cmd>`.** This points at the current source — no build step, no version drift. The published `npx hyperframes` may be weeks behind the worktree and silently miss fixes (capture asset-naming, snapshot sub-comp loading, lint rules, perception gate, etc.).
+
+| Command          | Invocation                                                       | Takes                | Notes                                                                                    |
+| ---------------- | ---------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------- |
+| `capture <URL>`  | `npx tsx packages/cli/src/cli.ts capture <URL> -o <dir>`         | URL + `-o <dir>`     | Paginated contact sheets + SVG root scan + content-addressable filenames (latest fixes). |
+| `snapshot <dir>` | `npx tsx packages/cli/src/cli.ts snapshot <dir> --frames <N>`    | DIRECTORY            | 3-col contact sheet + sub-comp load + Gemini vision descriptions.                        |
+| `lint <dir>`     | `npx tsx packages/cli/src/cli.ts lint .`                         | DIRECTORY, not file  | Pass a DIRECTORY (`lint .`), not a file (`lint index.html`).                             |
+| `validate <dir>` | `npx tsx packages/cli/src/cli.ts validate .`                     | DIRECTORY            | Headless render check. Surfaces render-time errors.                                      |
+| `inspect <dir>`  | `npx tsx packages/cli/src/cli.ts inspect . --samples <N>`        | DIRECTORY            | Probe gate. `N = max(18, scenes × 2)`.                                                   |
+| `preview`        | `npx tsx packages/cli/src/cli.ts preview`                        | (run in project dir) | Long-running server. Start before delivering.                                            |
+| `render <dir>`   | `npx tsx packages/cli/src/cli.ts render --output <path> ...`     | DIRECTORY            | `--quality` accepts `draft`, `standard`, or `high`. `medium` is INVALID.                 |
+
+**Footguns:**
+- ❌ `npx hyperframes <anything>` — published package lags the worktree; never use it for this workflow.
+- ❌ `hyperframes lint index.html` — takes a directory, not a file.
+- ❌ `--quality medium` — not a valid value (use `draft | standard | high`).
 
 ### Reference Files
 

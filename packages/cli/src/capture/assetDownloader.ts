@@ -6,6 +6,7 @@
  */
 
 import { writeFileSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, extname } from "node:path";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
@@ -22,24 +23,18 @@ export async function downloadAssets(
   const assets: DownloadedAsset[] = [];
   const downloadedUrls = new Set<string>();
 
-  // 1. ALL inline SVGs — save as files (logos get priority naming)
+  // 1. ALL inline SVGs — save as files with content-addressable names.
+  // Pattern: `<role>-<slug>-<hash8>.svg` where role∈{logo,icon}, slug is from
+  // svg.label (filtered to reject CSS-in-JS class hashes), hash is SHA-256 of
+  // the bytes. The hash makes refs stable across captures even when slug is bad.
   mkdirSync(join(outputDir, "assets", "svgs"), { recursive: true });
   const usedSvgNames = new Set<string>();
   for (let i = 0; i < tokens.svgs.length && i < 30; i++) {
     const svg = tokens.svgs[i]!;
     if (!svg.outerHTML || svg.outerHTML.length < 50) continue;
-    const label = svg.label?.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
-    let slug = label ? slugify(label) : svg.isLogo ? `logo-${i}` : `icon-${i}`;
-    // Deduplicate — two SVGs with same aria-label get suffixed
-    let finalSlug = slug;
-    let suffix = 2;
-    while (usedSvgNames.has(finalSlug)) {
-      finalSlug = `${slug}-${suffix}`;
-      suffix++;
-    }
-    usedSvgNames.add(finalSlug);
-    const name = `${finalSlug}.svg`;
-    const localPath = `assets/svgs/${name}`;
+    const name = deriveInlineSvgName(svg, i, usedSvgNames);
+    usedSvgNames.add(name);
+    const localPath = `assets/svgs/${name}.svg`;
     try {
       writeFileSync(join(outputDir, localPath), svg.outerHTML, "utf-8");
       assets.push({ url: "", localPath, type: "svg" });
@@ -135,8 +130,8 @@ export async function downloadAssets(
       if (result.status !== "fulfilled" || !result.value) continue;
       const { url, isPoster, parsedUrl, ext, buffer, catalog } = result.value;
       try {
-        // Generate human-readable name from catalog context
-        const slug = deriveAssetName(parsedUrl, catalog, isPoster, imgIdx, usedNames);
+        // Generate human-readable name from catalog context + content hash
+        const slug = deriveAssetName(parsedUrl, catalog, isPoster, imgIdx, usedNames, buffer);
         const name = `${slug}${ext}`;
         usedNames.add(slug);
         const localPath = `assets/${name}`;
@@ -300,82 +295,215 @@ async function fetchBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
-function slugify(text: string): string {
+/**
+ * Slugify text → kebab-case identifier suitable for a filename component.
+ * Caller passes the per-layer max length (kept tight to leave room for prefix+hash).
+ */
+function slugify(text: string, maxLen = 40): string {
   return text
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
-    .slice(0, 40);
+    .slice(0, maxLen);
 }
 
 /**
- * Derive a human-readable filename from catalog context.
- * Priority: alt text > nearest heading > meaningful URL path > fallback index.
+ * SingleFile-style character sanitization for the COMPOSED filename (slug + hash).
+ * Drops the small set of chars filesystems hate plus control chars; never touches
+ * dots (we need the extension boundary) or the kebab separator.
  */
-function deriveAssetName(
+function sanitizeFilename(name: string): string {
+  return name
+    // eslint-disable-next-line no-control-regex
+    .replace(/[~+?%*:|"<>\\/\x00-\x1f]/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Trivial-name rejector — these are placeholder DOM signals that mean nothing
+ * about the asset's actual identity. If the priority chain hits one of these,
+ * we keep walking down the chain instead of using it.
+ */
+const TRIVIAL_SLUG = /^(image|img|photo|picture|logo|icon|svg|file|asset|item|element)$/i;
+
+/**
+ * CSS-in-JS class hashes leak into svg.label when the SVG has no aria-label/id
+ * and tokenExtractor falls through to class names. Patterns like `sx-1fwcy2r`,
+ * `css-1abc23`, `_logo_3a4b5c`, etc. are useless as filenames — they encode
+ * style hashes, not content identity. Reject them so the hash-based fallback
+ * names the file by content instead.
+ */
+const CSS_IN_JS_HASH = /^(sx|css|jsx|emotion)-[a-z0-9]{4,}$|^_[a-z]+_[a-z0-9]+$|^[a-z]+-\d+[a-z]+\d*$/i;
+
+/**
+ * Inline-SVG filename. Content-addressable so the same SVG bytes always produce
+ * the same filename (great for diffs + collision-safety). When the label is a
+ * CSS-in-JS class hash, the slug is dropped and only role + hash remain.
+ */
+export function deriveInlineSvgName(
+  svg: {
+    outerHTML: string;
+    label?: string;
+    isLogo: boolean;
+    parentLandmark?: string | null;
+    inPartnerContext?: boolean;
+  },
+  idx: number,
+  usedNames: Set<string>,
+): string {
+  // Role priority: partner-logo (logo walls) > header-logo (visible brand mark)
+  // > nav-icon (nav controls) > logo (other branded marks) > icon.
+  let role: string;
+  if (svg.isLogo && svg.inPartnerContext) {
+    role = "partner-logo";
+  } else if (svg.isLogo && svg.parentLandmark === "header") {
+    role = "header-logo";
+  } else if (!svg.isLogo && svg.parentLandmark === "nav") {
+    role = "nav-icon";
+  } else if (svg.isLogo) {
+    role = "logo";
+  } else {
+    role = "icon";
+  }
+
+  let slug = "";
+  if (svg.label) {
+    const cleaned = svg.label.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
+    if (cleaned) {
+      const s = slugify(cleaned, 40);
+      if (s.length > 2 && !TRIVIAL_SLUG.test(s) && !CSS_IN_JS_HASH.test(s)) slug = s;
+    }
+  }
+
+  const hash = contentHash8(Buffer.from(svg.outerHTML, "utf-8"));
+  let composed = slug ? `${role}-${slug}-${hash}` : `${role}-${idx}-${hash}`;
+  composed = sanitizeFilename(composed);
+  if (composed.length > 100) composed = composed.slice(0, 100).replace(/-+$/, "");
+
+  let final = composed;
+  let suffix = 2;
+  while (usedNames.has(final)) {
+    final = `${composed}-${suffix}`;
+    suffix++;
+  }
+  return final;
+}
+
+/**
+ * Layer 4 — content-hash suffix. SHA-256, 8 base64url chars (~48 bits, ~16M
+ * collision-bound by birthday paradox — matches Vite default at the cache layer).
+ *
+ * Using Node's built-in `crypto.createHash('sha256')` (no new dep). BLAKE3 would
+ * be ~3x faster but requires `@noble/hashes` and we hash images once per capture —
+ * SHA-256 is fast enough.
+ *
+ * The hash:
+ *   1. dedupes filenames when two assets share a slug but have different bytes
+ *      (different SVGs both named "Logo" → "logo-AB12cD34.svg" vs "logo-EF56gH78.svg")
+ *   2. doubles as a content fingerprint for downstream tools
+ *   3. is stable across captures of the same asset (great for diffs)
+ */
+function contentHash8(buffer: Buffer): string {
+  return createHash("sha256").update(buffer).digest("base64url").slice(0, 8);
+}
+
+/**
+ * Derive a filename from catalog context using the June 2026 best-practice
+ * signal cascade (see CHANGELOG Session 10).
+ *
+ * Filename pattern: `<slot-role>-<semantic-slug>-<hash8>` (extension appended
+ * by caller). Examples:
+ *   - header-logo-heygen-a1b2c3d4
+ *   - partner-strip-1-3-google-e5f6g7h8         (4th of cluster 1)
+ *   - hero-product-shot-i9j0k1l2
+ *   - content-image-7-m3n4o5p6                  (no semantic signals available)
+ *
+ * Signal priority (highest trust first):
+ *   1. isCanonicalLogo (JSON-LD schema.org/Organization.logo) → role=header-logo
+ *   2. slotRole from cluster detection or parentLandmark
+ *   3. semantic slug: altText → ariaLabel → enclosingHref → URL path → nearestHeading (demoted)
+ *   4. SHA-256 hash suffix for collision-safety + content fingerprint
+ *
+ * Why DOM-heading is demoted: it's the root cause of the partner-wall bug
+ * (8/12 multi-URL retros). N≥4 logos under the same heading inherited the
+ * same slug ("trusted-by"); deduplication then appended counters that
+ * didn't match content. Cluster detection (Layer 0, in assetCataloger.ts)
+ * now solves this by giving each cluster member a unique slot-role; the
+ * heading is only a last-resort signal.
+ */
+export function deriveAssetName(
   parsedUrl: URL,
   catalog: CatalogedAsset | undefined,
   isPoster: boolean,
   idx: number,
   usedNames: Set<string>,
+  buffer: Buffer,
 ): string {
-  const candidates: string[] = [];
-
-  // 1. Alt text / description from catalog
-  if (catalog?.description) {
-    const desc = catalog.description.replace(/[^a-zA-Z0-9 -]/g, "").trim();
-    if (desc.length > 3 && desc.length < 80) candidates.push(desc);
+  // Layer 1 — slot role
+  let role: string;
+  if (isPoster) {
+    role = "poster";
+  } else if (catalog?.slotRole) {
+    role = catalog.slotRole;
+  } else if (catalog?.aboveFold) {
+    role = "hero";
+  } else {
+    role = "content";
   }
 
-  // 2. Nearest heading context
-  if (catalog?.nearestHeading) {
-    const heading = catalog.nearestHeading.replace(/[^a-zA-Z0-9 -]/g, "").trim();
-    if (heading.length > 3 && heading.length < 60) candidates.push(heading);
-  }
-
-  // 3. Meaningful URL path segment
-  const rawName =
-    parsedUrl.pathname
-      .split("/")
-      .pop()
-      ?.replace(/\.[^.]+$/, "") || "";
-  const isMeaningful =
-    rawName.length > 2 &&
-    rawName.length < 50 &&
-    !/^[a-f0-9]{8,}$/i.test(rawName) &&
-    !/^\d+$/.test(rawName) &&
-    !rawName.includes("_next") &&
-    !rawName.includes("?");
-  if (isMeaningful) candidates.push(rawName);
-
-  // 4. Section classes as context
-  if (catalog?.sectionClasses) {
-    const classes = catalog.sectionClasses
-      .split(/\s+/)
-      .filter((c) => c.length > 3 && c.length < 30 && !/^(w-|h-|p-|m-|flex|grid|block)/.test(c))
-      .slice(0, 2)
-      .join("-");
-    if (classes.length > 3) candidates.push(classes);
-  }
-
-  // Pick the best candidate
-  const prefix = isPoster ? "poster" : catalog?.aboveFold ? "hero" : "image";
+  // Layer 2 — semantic slug priority chain.
+  // Each candidate is tried in order; first non-trivial, non-empty result wins.
   let slug = "";
+  const trySlug = (raw: string | undefined | null): void => {
+    if (slug) return;
+    if (!raw) return;
+    const s = slugify(raw, 40);
+    if (s.length > 2 && !TRIVIAL_SLUG.test(s)) slug = s;
+  };
 
-  for (const c of candidates) {
-    slug = slugify(c);
-    if (slug.length > 3 && !usedNames.has(slug)) break;
+  trySlug(catalog?.altText);
+  trySlug(catalog?.ariaLabel);
+  trySlug(catalog?.enclosingHref);
+  if (!slug) {
+    // URL path segment (same heuristic as legacy, kept here as Layer 2.5).
+    const rawName =
+      parsedUrl.pathname
+        .split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "") || "";
+    const isMeaningful =
+      rawName.length > 2 &&
+      rawName.length < 50 &&
+      !/^[a-f0-9]{8,}$/i.test(rawName) &&
+      !/^\d+$/.test(rawName) &&
+      !rawName.includes("_next") &&
+      !rawName.includes("?");
+    if (isMeaningful) trySlug(rawName);
   }
+  // Legacy fallback — nearestHeading, but DEMOTED to the last semantic signal.
+  // On partner walls this would have been the BUG (N logos share one heading);
+  // the cluster detection above already gave those a unique slot-role, so by
+  // the time we get here we're either NOT on a partner wall OR slot-role + hash
+  // disambiguate enough that heading misattribution doesn't matter.
+  trySlug(catalog?.nearestHeading);
+  // Description (legacy alt+aria+title+figcaption mashup) — even lower priority.
+  trySlug(catalog?.description);
 
-  if (!slug || slug.length <= 3 || usedNames.has(slug)) {
-    slug = `${prefix}-${idx}`;
-  }
+  // Layer 4 — hash suffix (always, for collision-safety + dedup signal)
+  const hash = contentHash8(buffer);
 
-  // Deduplicate
-  let final = slug;
+  // Compose final name. Cap total length at ~100 to keep filenames reasonable.
+  let composed = slug ? `${role}-${slug}-${hash}` : `${role}-${idx}-${hash}`;
+  composed = sanitizeFilename(composed);
+  if (composed.length > 100) composed = composed.slice(0, 100).replace(/-+$/, "");
+
+  // SingleFile-style uniquify: if name is taken (cross-batch dedup happens at
+  // the URL layer; this only fires for same-slug + same-hash truncated to 8
+  // chars, vanishingly rare in practice) append a counter.
+  let final = composed;
   let suffix = 2;
   while (usedNames.has(final)) {
-    final = `${slug}-${suffix}`;
+    final = `${composed}-${suffix}`;
     suffix++;
   }
 

@@ -173,6 +173,7 @@ export function lintProject(project: ProjectDir): ProjectLintResult {
   const projectFindings = [
     ...lintProjectAudioFiles(project.dir, allHtmlSources),
     ...lintAudioSrcNotFound(project.dir, allHtmlSources),
+    ...lintMissingLocalAsset(project.dir, allHtmlSources),
     ...lintTextureMaskAssetNotFound(project.dir, allHtmlSources),
     ...lintMultipleRootCompositions(project.dir),
     ...lintDuplicateAudioTracks(allHtmlSources),
@@ -282,6 +283,83 @@ function lintAudioSrcNotFound(
         unique.length === 1
           ? `Add the file "${unique[0]}" to the project directory, or update the src attribute to point to an existing file.`
           : `Add the missing files to the project directory, or update the src attributes to point to existing files.`,
+    });
+  }
+
+  return findings;
+}
+
+/**
+ * Check for <video>, <img>, and <source> elements whose src points to a local
+ * file that doesn't exist in the project. Mirrors lintAudioSrcNotFound but for
+ * visual assets. The renderer 404s silently and produces a video with the asset
+ * just missing from frame — no error surfaced, no log.
+ *
+ * Empirically the most common sub-agent mistake per references/step-5-build.md
+ * ASSET PATHS section (~5+ agents per multi-URL run). Combined with the fact
+ * that captured asset filenames are unreliable (heygen-logo.svg may contain
+ * Google), this rule catches the proximate cause of broken-asset renders.
+ *
+ * <audio> is handled separately by lintAudioSrcNotFound — skip here to avoid
+ * double-reporting and to preserve audio's tailored "silent video" message.
+ */
+function lintMissingLocalAsset(
+  projectDir: string,
+  htmlSources: HtmlSource[],
+): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+
+  const localAssetSrcRe = /<(video|img|source)\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+
+  // tagName → Map<resolvedAbsPath, representativeSrc>. We dedup by RESOLVED
+  // path so that the same missing file referenced as `capture/x.png` from
+  // root and `../capture/x.png` from a sub-comp produces ONE finding, not two.
+  // The representative src is whichever src the resolver saw first — that's
+  // what surfaces in the user-facing message.
+  const missingByTag = new Map<string, Map<string, string>>();
+
+  for (const { html, compSrcPath } of htmlSources) {
+    const re = new RegExp(localAssetSrcRe.source, localAssetSrcRe.flags);
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(html)) !== null) {
+      const tagName = (match[1] ?? "").toLowerCase();
+      const rawSrc = match[2] ?? "";
+      const src = cleanAssetUrl(rawSrc);
+      if (!src) continue;
+      if (isRemoteOrInlineUrl(src)) continue;
+      if (/^__[A-Z_]+__$/.test(src)) continue; // template placeholder
+      // Sub-composition srcs are written relative to the sub-comp file
+      // (e.g. "../assets/foo.png"); the bundler rewrites them to root-relative
+      // before serving. Mirror that rewrite so the existence check sees the
+      // same path the renderer will. Root-html srcs pass through unchanged.
+      const rootRelative = compSrcPath ? rewriteAssetPath(compSrcPath, src) : src;
+      const resolved = resolve(projectDir, rootRelative);
+      if (existsSync(resolved)) continue;
+
+      let bucket = missingByTag.get(tagName);
+      if (!bucket) {
+        bucket = new Map<string, string>();
+        missingByTag.set(tagName, bucket);
+      }
+      if (!bucket.has(resolved)) bucket.set(resolved, src);
+    }
+  }
+
+  for (const [tagName, byResolved] of missingByTag) {
+    const unique = [...byResolved.values()];
+    findings.push({
+      code: "missing_local_asset",
+      severity: "error",
+      message:
+        `<${tagName}> element references local file(s) not found in the project: ${unique.join(", ")}. ` +
+        "The renderer will silently skip these and produce a video with missing visuals.",
+      fixHint:
+        unique.length === 1
+          ? `Add "${unique[0]}" to the project directory, or update the src attribute to point to an existing file. ` +
+            "Common cause: captured asset filenames are unreliable (heygen-logo.svg often contains Google, nvidia-logo.svg may contain Autodesk, etc.). " +
+            "Open the contact sheets and verify the file actually exists at this path before referencing it."
+          : "Add the missing files to the project directory, or update the src attributes to point to existing files. " +
+            "Captured asset filenames are unreliable — verify against capture/contact-sheets/ and capture/extracted/asset-descriptions.md.",
     });
   }
 

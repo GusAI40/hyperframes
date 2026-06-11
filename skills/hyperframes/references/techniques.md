@@ -154,8 +154,8 @@ Words appear one-by-one, synced to transcript.json timestamps. The core techniqu
 <style>
   .word {
     display: inline-block;
-    opacity: 0;
     margin: 0 0.12em;
+    /* No CSS opacity:0 here — initial state is set by GSAP via fromTo. */
   }
 </style>
 <script>
@@ -164,15 +164,10 @@ Words appear one-by-one, synced to transcript.json timestamps. The core techniqu
   var slides = [80, 60, 50, 25, 12]; // horizontal slide decay (px)
 
   document.querySelectorAll(".word").forEach(function (word, i) {
-    tl.from(
+    tl.fromTo(
       word,
-      {
-        x: slides[i],
-        y: 14,
-        opacity: 0,
-        duration: 0.35,
-        ease: "power2.out",
-      },
+      { x: slides[i], y: 14, opacity: 0 },
+      { x: 0, y: 0, opacity: 1, duration: 0.35, ease: "power2.out" },
       timings[i],
     );
   });
@@ -181,26 +176,29 @@ Words appear one-by-one, synced to transcript.json timestamps. The core techniqu
 
 The slide distance DECAYS per word (80→12px) — mimics a camera settling.
 
+**Why `fromTo`, not `from`:** If `.word` carried CSS `opacity: 0` and the timeline used `tl.from(word, { opacity: 0 })`, the start AND end would both be `0` (`from` reads the current rendered state as the END), producing invisible words under seek-based rendering. Always pair explicit start state + explicit end state for safety.
+
 ---
 
 ## 5. Lottie Animation
 
 Vector animations that play inside a composition. Use for logos, character animations, icons.
 
+> **Asset paths in compositions are root-relative** (`capture/assets/…`), not file-relative (`../capture/…`). See [website-to-hyperframes/references/step-5-build.md](../../website-to-hyperframes/references/step-5-build.md) "ASSET PATHS" for the full rule. The Studio preview server rewrites base URLs to the project root — `../` paths that seem to work locally will 404 in preview and in renders.
+
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web/dist/dotlottie-player.js"></script>
-<dotlottie-player
+<script src="https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-wc/dist/dotlottie-wc.js" type="module"></script>
+<dotlottie-wc
   class="lottie"
-  src="../capture/assets/lottie/animation-0.json"
+  src="capture/assets/lottie/animation-0.json"
   autoplay
   loop
   speed="1.5"
-  style="width:500px;height:500px;"
+  style="width:500px;height:500px;opacity:0"
 >
-</dotlottie-player>
+</dotlottie-wc>
 <script>
-  gsap.set(".lottie", { scale: 0.3, opacity: 0 });
-  tl.to(".lottie", { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(1.6)" }, 0.2);
+  tl.fromTo(".lottie", { scale: 0.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(1.6)" }, 0.2);
 </script>
 ```
 
@@ -212,7 +210,7 @@ var anim = lottie.loadAnimation({
   renderer: "svg",
   loop: false,
   autoplay: false,
-  path: "../capture/assets/lottie/animation-0.json",
+  path: "capture/assets/lottie/animation-0.json",
 });
 ```
 
@@ -226,7 +224,7 @@ Embed real video footage inside compositions. Videos must be `muted` with `plays
 <div class="video-frame" style="width:680px;height:840px;border-radius:16px;overflow:hidden;">
   <video
     id="footage"
-    src="../capture/assets/videos/clip.mp4"
+    src="capture/assets/videos/clip.mp4"
     muted
     playsinline
     style="width:100%;height:100%;object-fit:cover;"
@@ -285,10 +283,10 @@ Animate font-variation-settings to reshape glyphs in real-time. Works with varia
 ```html
 <style>
   /* Load the captured local variable font — do NOT use Google Fonts @import.
-     Replace this placeholder with an @font-face pointing to ../capture/assets/fonts/. */
+     Replace this placeholder with an @font-face pointing to capture/assets/fonts/. */
   @font-face {
     font-family: "Fraunces";
-    src: url("../capture/assets/fonts/Fraunces-Variable.woff2") format("woff2");
+    src: url("capture/assets/fonts/Fraunces-Variable.woff2") format("woff2");
     font-weight: 100 900;
     font-style: normal;
     font-display: block;
@@ -887,3 +885,38 @@ GSAP offers a deep easing library. Every composition should use at least 3 diffe
 Don't match techniques to video type on autopilot — match them to the **concept of the specific beat**. Ask: what visual treatment makes this exact idea land? A beat about speed needs motion that communicates speed; a beat about precision needs geometry and structure; a beat about warmth needs texture and organic drift.
 
 Read the storyboard beat's concept and mood, then scan this list for techniques whose _visual character_ serves that concept. Any technique can appear in any video type — the question is whether it earns its place in this beat.
+
+---
+
+## Transitions — known artifacts
+
+These are not bugs to fix — they're characteristics of the engine to design around. Each one cost at least one full render cycle to discover.
+
+### CSS crossfade scales the outgoing scene ≈1.5×
+
+The HyperShader "no shader" crossfade (`{ time: T, duration: D }` without a `shader` field — see [transitions.md](./transitions.md)) is not a pure opacity dissolve. The outgoing scene is scaled to ≈1.5× during the fade. Full-frame headlines balloon past the frame edges at the midpoint (~70% through the transition). Catchable only at transition mid-render, not at rest.
+
+```html
+<!-- BAD: headline fills full width, gets clipped at the crossfade midpoint -->
+<h1 style="font-size:140px">SCALING PAST THE FRAME</h1>
+```
+
+```html
+<!-- GOOD: headline survives the 1.5× scale because it occupies <70% width -->
+<h1 style="font-size:140px;max-width:70%;margin:0 auto;text-align:center">
+  SHORTER LINE
+</h1>
+```
+
+There is no flag to disable the scale — it's intrinsic to the engine's crossfade. Either keep transition-boundary text under 70% frame width, or use an explicit shader (`sdf-iris`, `domain-warp`, etc.).
+
+### `flash-through-white` reads near-black between two dark scenes
+
+Luminance-dependent. With no bright pixels in either scene, the shader produces a dark concentric ripple, not a white flash. Drop the shader; compose a full-frame white overlay div animated `opacity: 1 → 0` over ~0.5s INSIDE the incoming beat, and make the index transition a plain 0.2s crossfade:
+
+```html
+<div class="flash" style="position:absolute;inset:0;background:#fff;z-index:99;opacity:1;pointer-events:none"></div>
+<script>tl.to(".flash", { opacity: 0, duration: 0.5, ease: "power2.out" }, 0);</script>
+```
+
+This pattern gives reliable, controllable flashes regardless of scene luminance.

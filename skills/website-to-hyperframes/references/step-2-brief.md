@@ -41,8 +41,13 @@ Instead, ask them across the six axes from [visual-vocabulary.md](visual-vocabul
 >
 > - **Pace:** Should the video move slowly and let moments breathe, or be fast and punchy? Or somewhere in between?
 > - **Mood:** What atmosphere matches how you want viewers to feel — dark and dramatic, clean and light, energetic and vibrant, or something else?
-> - **Narration:** Should a voice guide viewers through the video, or let the visuals carry it?
+> - **Narration & on-screen text — pick one:**
+>     - **(a) Voiceover only** — a voice carries the video; no text overlay.
+>     - **(b) On-screen captions/text** — the video narration appears as text on screen (subtitles / lower-thirds / kinetic type that mirrors the voice or carries it on its own).
+>     - **(c) No narration text** — visuals + ambient/music carry it; nothing spoken or written.
 > - **Anything specific?** Any moments, techniques, or references you're drawn to? Or say 'surprise me' and I'll work from what I found in the capture."
+
+The narration choice drives Step 4 (whether `narration.wav` + `transcript.json` are generated) AND Step 5's captions sub-step (whether `captions.mjs` produces `compositions/captions.html`). **Do not re-ask later.** A user who picked (a) gets a voiceover with no captions track; (b) gets both VO and captions; (c) gets visuals only.
 
 Their answers modify the brand-derived baseline you built in Step 1. Don't override the brand with their words — let the brand and their direction converge. See [visual-vocabulary.md](visual-vocabulary.md) for how to handle conflicts.
 

@@ -11,7 +11,7 @@ For implementation patterns (working code), see `techniques.md`. This file is th
 - **Deterministic:** No `Math.random()`, no `Date.now()`, no `requestAnimationFrame`, no `repeat: -1`. The render engine seeks to exact timestamps.
 - **Timeline contract:** `window.__timelines["composition-id"] = tl` must be set synchronously. The timeline length defines the composition duration.
 - **Sub-compositions:** External `.html` files loaded via `data-composition-src`. Auto-nested timelines, scoped CSS, scoped scripts.
-- **Linter:** 60+ rules. Run `npx hyperframes lint` before render. Catches missing timelines, overlapping clips, broken paths, GSAP errors.
+- **Linter:** 60+ rules. Run `npx tsx packages/cli/src/cli.ts lint .` before render. Catches missing timelines, overlapping clips, broken paths, GSAP errors.
 
 ## Table of Contents
 
@@ -421,7 +421,7 @@ window.addEventListener("hf-seek", (e) => {
 
 warm-grain, play-mode, swiss-grid, vignelli, decision-tree, kinetic-type, product-promo, nyt-graph
 
-Install: `npx hyperframes add <name>` for blocks/components, `hyperframes init <dir> --example <name>` for examples.
+Install: `npx tsx packages/cli/src/cli.ts add <name>` for blocks/components, `npx tsx packages/cli/src/cli.ts init <dir> --example <name>` for examples.
 
 ---
 
@@ -454,7 +454,7 @@ Install: `npx hyperframes add <name>` for blocks/components, `hyperframes init <
 | snapshot          | PNG screenshots at timeline timestamps                                                                                                                                                                                                                                                                                   |
 | capture           | Capture URL → site assets + screenshots + design tokens (uses Puppeteer + optional Gemini vision)                                                                                                                                                                                                                        |
 
-### Website capture (`hyperframes capture <url>`)
+### Website capture (`npx tsx packages/cli/src/cli.ts capture <url>`)
 
 Detects these libraries on captured sites (for context labeling): GSAP / ScrollTrigger, Three.js, Lottie, Anime.js, PixiJS, Babylon.js, Rive, Matter.js, Lenis, Framer Motion, Tailwind CSS, WebGL (shader fingerprinting). Captured outputs feed the website-to-hyperframes skill workflow.
 
@@ -573,7 +573,7 @@ Full editor in packages/studio/:
 - No `Date.now()` / `new Date()`
 - No `setTimeout` / `setInterval` in timeline construction
 - No `requestAnimationFrame` (timeline-driven; engine seeks per frame)
-- No `repeat: -1` (calculate exact repeats: `Math.ceil(duration / cycleDuration) - 1`)
+- No `repeat: -1` AND no formula expressions. Compute `floor(duration / cycleDuration) - 1` at design time and write the resulting LITERAL integer (e.g. `repeat: 6`). The lint forbids both `repeat: -1` (`gsap_infinite_repeat`) and `Math.ceil(...) - 1` call expressions (`gsap_repeat_ceil_overshoot`).
 - No `tl.call(fn)` / `tl.add(function)` / `onComplete`/`onStart`/`onUpdate`/`onRepeat` callbacks (engine doesn't fire them)
 - No `gsap.set` on clips from later scenes (use `tl.set(selector, vars, position)`)
 - Synchronous timeline construction (no async)
@@ -600,9 +600,9 @@ Compositions support typed runtime variables:
 Access via `window.__hyperframes.getVariables()`. Override at render time:
 
 ```bash
-npx hyperframes render --variables '{"brand":"Linear","primary":"#5E6AD2"}'
-npx hyperframes render --variables-file vars.json
-npx hyperframes render --strict-variables  # error if unused / mismatched
+npx tsx packages/cli/src/cli.ts render --variables '{"brand":"Linear","primary":"#5E6AD2"}'
+npx tsx packages/cli/src/cli.ts render --variables-file vars.json
+npx tsx packages/cli/src/cli.ts render --strict-variables  # error if unused / mismatched
 ```
 
 `validateVariables()` checks values against declarations at the CLI/tooling boundary.

@@ -117,5 +117,50 @@ describe("font rules", () => {
       const findings = findByCode(html, "font_family_without_font_face");
       expect(findings).toHaveLength(0);
     });
+
+    it("does not flag Apple system fallback families", () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }</style>
+      </div>`;
+      const findings = findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("does not flag Microsoft Segoe UI variants", () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; }</style>
+      </div>`;
+      const findings = findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("does not flag dev-monospace fallback stacks (Menlo, Consolas, Monaco)", () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>code { font-family: 'JetBrains Mono', Menlo, Consolas, Monaco, monospace; }</style>
+      </div>`;
+      const findings = findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("does not flag a full realistic system stack", () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>
+          @font-face { font-family: 'Inter'; src: url('capture/assets/fonts/Inter.woff2'); }
+          body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        </style>
+      </div>`;
+      const findings = findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(0);
+    });
+
+    it("still flags a non-system unbundled family when used alongside system fallbacks", () => {
+      const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
+        <style>body { font-family: 'Pixel Operator', -apple-system, sans-serif; }</style>
+      </div>`;
+      const findings = findByCode(html, "font_family_without_font_face");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]!.message).toContain("pixel operator");
+      expect(findings[0]!.message).not.toContain("apple-system");
+    });
   });
 });
