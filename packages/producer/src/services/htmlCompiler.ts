@@ -23,7 +23,10 @@ import {
   type ResolvedDuration,
   type UnresolvedElement,
 } from "@hyperframes/core";
-import { inlineSubCompositions as inlineSubCompositionsShared } from "@hyperframes/core/compiler";
+import {
+  inlineSubCompositions as inlineSubCompositionsShared,
+  prepareFlattenedInnerRoot,
+} from "@hyperframes/core/compiler";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import {
@@ -604,6 +607,7 @@ function inlineSubCompositions(
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       scriptErrorLabel: "[Compiler] Composition script failed",
       compoundAuthoredRoot: true,
+      flattenInnerRoot: prepareFlattenedInnerRoot as (el: Element) => Element,
     },
   );
 

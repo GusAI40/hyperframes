@@ -216,6 +216,78 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(host.hasAttribute("data-timeline-locked")).toBe(true);
   });
 
+  it("flattenInnerRoot preserves inner root classes (e.g. .scene_N-root) so scoped CSS resolves", () => {
+    const subCompWithClass = `<template id="scene_1-template">
+  <div id="root" class="scene_1-root" data-composition-id="scene_1" data-width="1920" data-height="1080">
+    <div class="s1-board">Content</div>
+    <style>
+      .scene_1-root { position:relative; }
+      .scene_1-root .s1-board { color:red; }
+    </style>
+  </div>
+</template>`;
+
+    const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-composition-id="scene_1" data-composition-src="scene_1.html"
+         data-start="0" data-duration="4" data-track-index="0"></div>
+  </div>
+</body></html>`);
+    const host = document.querySelector('[data-composition-src="scene_1.html"]')!;
+
+    function flattenInnerRoot(innerRoot: Element): Element {
+      const clone = innerRoot.cloneNode(true) as Element;
+      const authoredId = clone.getAttribute("id");
+      if (authoredId) {
+        clone.setAttribute("data-hf-authored-id", authoredId);
+        clone.removeAttribute("id");
+      }
+      clone.setAttribute("data-hf-inner-root", "true");
+      return clone;
+    }
+
+    inlineSubCompositions(document, [host], {
+      resolveHtml: () => subCompWithClass,
+      parseHtml: (html) => parseHTML(html).document,
+      flattenInnerRoot,
+    });
+
+    const innerRoot = host.querySelector(".scene_1-root");
+    expect(innerRoot).not.toBeNull();
+    expect(innerRoot!.querySelector(".s1-board")).not.toBeNull();
+  });
+
+  it("without flattenInnerRoot, inner root class is lost (pre-fix producer behavior)", () => {
+    const subCompWithClass = `<template id="scene_1-template">
+  <div id="root" class="scene_1-root" data-composition-id="scene_1" data-width="1920" data-height="1080">
+    <div class="s1-board">Content</div>
+    <style>
+      .scene_1-root { position:relative; }
+      .scene_1-root .s1-board { color:red; }
+    </style>
+  </div>
+</template>`;
+
+    const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">
+    <div data-composition-id="scene_1" data-composition-src="scene_1.html"
+         data-start="0" data-duration="4" data-track-index="0"></div>
+  </div>
+</body></html>`);
+    const host = document.querySelector('[data-composition-src="scene_1.html"]')!;
+
+    inlineSubCompositions(document, [host], {
+      resolveHtml: () => subCompWithClass,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    // Without flattenInnerRoot, innerHTML strips the wrapper — class is lost
+    const innerRoot = host.querySelector(".scene_1-root");
+    expect(innerRoot).toBeNull();
+  });
+
   it("producer path propagates data-hf-authored-id to host when inner root has id", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;
