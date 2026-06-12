@@ -153,6 +153,38 @@ Every CLI invocation in this skill uses `npx tsx packages/cli/src/cli.ts <cmd>`.
 
 `lint` / `validate` take a DIRECTORY, not a file (`npx tsx packages/cli/src/cli.ts lint .` not `... lint index.html`). `--quality medium` is invalid — the valid set is `draft | standard | high`.
 
+### 10. Sub-comp root `background:` CSS doesn't paint — use a full-bleed child div instead
+
+A composition's root `<div data-composition-id="...">` is the host element the assembler INSERTS into `index.html`. CSS like `.b6-root { background: #000; }` on the root will NOT paint in the rendered video — the renderer composites against transparency. Beat-6 of an early heygen test opened on a blank white frame because of exactly this. The fix is a full-bleed child div that paints the background INSIDE the root:
+
+```html
+<!-- ❌ BAD: background on the root won't paint at render time -->
+<div data-composition-id="beat-6-cta" style="background: #050507;">
+  <h1>...</h1>
+</div>
+
+<!-- ✅ GOOD: full-bleed child paints the background -->
+<div data-composition-id="beat-6-cta">
+  <div style="position: absolute; inset: 0; background: #050507; z-index: 0;"></div>
+  <h1 style="position: relative; z-index: 1;">...</h1>
+</div>
+```
+
+Same rule for gradients, images, or any `background-*` property. The lint won't catch this; it ships looking fine in Studio preview (where root CSS DOES paint) and breaks only at MP4 render.
+
+### 11. Captured assets disguised as the wrong format (AVIF-as-`.jpg`)
+
+The capture pipeline names downloaded images by URL extension (`hero.jpg` if the URL ends `.jpg`), but the SERVER's actual content type may be AVIF — modern image CDNs serve AVIF to browsers that accept it, regardless of URL extension. AVIF files saved with `.jpg` extension can break headless render (Chrome can render AVIF, but ffmpeg's image pipeline may not, depending on build). If a beat references a `.jpg` asset and the render fails to load that frame, check with `file capture/assets/<name>.jpg` — if it reports `ISO Media, AVIF Image`, that's the cause. Workaround: use a different captured asset of the same subject, or convert with `ffmpeg -i broken.jpg good.png`.
+
+### 12. SFX CLI gotchas (cwd drift, zsh word-split, cache miss, dead clips)
+
+The `sfx` command flow has four real friction points lived agents have hit:
+
+- **CWD drift breaks `source .env`** — if you `cd` into a subdir between commands, `.env` relative paths fail. Either use `npx tsx packages/cli/src/cli.ts ... --env $PROJECT_DIR/.env`, or stay in the project root for SFX commands. The local CLI auto-loads `.env` from cwd, so cwd matters.
+- **zsh doesn't word-split `$CLI sfx ...`** — if you store the CLI command in a variable (e.g. `CLI="npx tsx packages/cli/src/cli.ts"`), zsh treats `$CLI sfx search "..."` as one giant filename and fails with "no such file." Either invoke the CLI literally (don't store in a variable) or use `${=CLI}` to force word-splitting in zsh. Bash word-splits by default.
+- **`sfx add <id>` requires a prior `sfx search`** — the catalog API has no fetch-by-id; `add` reads a per-project cache populated by `search`. If you `add <id>` without searching first, you get "Unknown SFX id." Always search → add. The cache persists per project.
+- **Some catalog clips are silent / dead (-70 LUFS)** — occasional misindexed clips return audio that's effectively silent. `sfx add` prints the LUFS in the analysis. If you see something like `-70` LUFS where you expected `-12` to `-20`, the clip is dead — re-search with a different query and pick a different ID.
+
 ## 2. Build each composition — USE SUB-AGENTS
 
 **Before dispatching, re-read DESIGN.md and STORYBOARD.md.** You wrote these files earlier in the session and you think you remember them. You don't — not the exact hex values, not the specific font families, not the button border-radius, not the Do's/Don'ts. Re-read them now so you can paste accurate brand rules and beat specs into each sub-agent prompt.

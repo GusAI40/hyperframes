@@ -50,6 +50,8 @@ A flat lookup of the values sub-agents grab while composing beats. Two sub-secti
 
 List 8–12 colors with brand-specific names + HEX + role. Not generic ("Accent 1") but evocative ("Stripe Purple", "Deep Navy", "Slate Border"). The name carries meaning; "blue 4" doesn't.
 
+**Order matters: list the brand-primary HEX FIRST.** `w2h-prep` parses DESIGN.md and picks the first non-white / non-black hex it finds as the brand-primary for `tokens.css` emission. If you list a secondary color first, the wrong color becomes the brand-primary downstream. Order: Primary CTA color → secondaries → supporting → borders.
+
 **Example:**
 
 ```markdown
