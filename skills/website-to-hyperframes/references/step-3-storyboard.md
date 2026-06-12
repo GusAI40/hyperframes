@@ -198,7 +198,36 @@ Apple keynote register — economy of words, silence between sentences is a feat
 **Global guardrails** — read [video-composition.md](../../hyperframes/references/video-composition.md) first. It defines the medium rules: density, color presence, scale, frame composition, and how design.md is brand truth not layout spec. Then apply these capture-specific additions:
 
 - Captured assets and composed visuals are both load-bearing — the agent decides per beat which to use, and most beats correlate both. See the Asset & Brand Floor section below for the required floor (brand mark + signature visual) and the variation principle (don't repeat the same content-source pattern across beats).
-- Use different techniques from techniques.md — not across the whole video, per beat. Don't default to basic fade/scale/opacity. Lead with the techniques that carry brand content directly: SVG path drawing (logo stroke-by-stroke, diagram builds), HTML-in-Canvas (iPhone/MacBook mockups with live captured screens), per-word kinetic typography, camera moves (push-in, dolly, parallax, leading-line traversal), CSS 3D transforms, variable font axis animation, character-by-character typing, counter animations, canvas procedural art for ambient backgrounds, clip-path reveal masks. Shaders are powerful but optional — most videos ship without them; use only when the beat is truly a hero "wow" moment. Each beat should feel like its own visual world. Use as many as makes sense for the storyboard.
+- Use different techniques from techniques.md — not across the whole video, per beat. Don't default to basic fade/scale/opacity. The HyperFrames toolkit (read [`techniques.md`](../../hyperframes/references/techniques.md) and [`capabilities.md`](capabilities.md) for the full catalog) — equal-weight options the agent picks from per beat:
+
+  **Content-carrying (brand-true) techniques:**
+  - **SVG path drawing** — logo / diagram / icon draws itself stroke-by-stroke (stroke-dashoffset). Best for brand-mark reveals, connector lines, hand-drawn-feel openers.
+  - **HTML-in-Canvas (`drawElementImage`)** — live HTML/CSS captured as a GPU texture at 60fps. Powers iPhone/MacBook mockups with REAL captured screens inside (`vfx-iphone-device` block), liquid glass refraction over UI (`vfx-liquid-glass`), shatter, portal reveal, magnetic distortion.
+  - **Video compositing** — REAL captured `<video>` clips played inline, masked, overlaid (capture downloads `<video src>` sources to `assets/`). Use when the brand's actual moving product footage exists.
+  - **Lottie animation** — captured or external `.lottie` / `.json` plays as overlay/background. Many sites ship Lottie files; use them rather than recreating their motion in CSS.
+  - **Three.js custom scenes** — full 3D when registry VFX blocks aren't enough (rotating product, sphere, orbit, particle field). More setup than the VFX blocks; only when needed.
+
+  **Composed motion + typography:**
+  - **Per-word kinetic typography** — text animates word-by-word with stagger timing (see [`text-effects.md`](../../hyperframes/references/text-effects.md) catalog of 24 named effects: soft-blur-in, mask-reveal-up, kinetic-center-build, shared-axis, line-by-line-slide, etc.).
+  - **Variable font axis animation** — weight / width / slant / optical-size morph over time (premium typography, wordmark reveals).
+  - **Character-by-character typing** — terminal lines, search bars, code blocks (steps() easing for discrete reveals).
+  - **Counter animations** — discrete `tl.set(el, {textContent})` at timestamps (numbers ramping, stats).
+  - **CSS 3D transforms** — card flips, perspective grids, folding panels.
+  - **Clip-path reveal masks** — content slides through a fixed window (image wipes, headline reveals).
+  - **Camera moves** — push-in (dolly), pull-back, parallax pan, orbit, rack focus, `leading-line-camera-traversal` (world canvas larger than viewport, camera pans across following hand-drawn lines). See "Named motion patterns" further below.
+  - **GSAP MotionPathPlugin** — element follows an SVG `<path d="…"/>` curve through space (orbital motion, spirals, complex entrances — see `bezier-motion-path` motion pattern below).
+  - **Velocity-matched transitions** — outgoing blur/translate matches incoming for seamless beat handoffs (see `whip-pan` + `match-cut-handoff` motion patterns).
+  - **Drifters** — looping background elements (floating particles, slow gradient orbs, ambient marks) at independent intervals for continuous depth behind primary content.
+
+  **Audio-driven (when music or VO is present):**
+  - **Audio-reactive animation** — bass / mid / treble → scale / glow / shape via `<hf-audio-reactive>`. Highest payoff in music-led / no-VO videos.
+
+  **GPU effects (powerful, optional, rare):**
+  - **Shader transitions** — WebGL effects between beats (chromatic, domain-warp, light-leak, swirl, etc.). Max 1-2 per video; **zero is fine and common**. Use only on truly hero "wow" beat boundaries.
+  - **WebGL Fragment Shader Art** — full GPU generative backgrounds (FBM domain warp, cosine palettes). Atmospheric hero scenes; not most beats.
+  - **30+ CSS scene transitions** — named patterns (push, scale, dissolve, blur, 3D flip, light-leak, distortion, grid, mechanical, destruction) lighter than shader transitions but more personality than crossfade.
+
+  Each beat should feel like its own visual world; vary the technique across beats (per the variation principle below). Pick from the catalog above based on what THIS beat's concept needs.
 
 **Music direction details** (only if Step 2 Q5 said yes):
 
