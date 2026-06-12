@@ -213,6 +213,18 @@ Beat count is not in this table intentionally — it should come from the storyb
 - ❌ `hyperframes lint index.html` — takes a directory, not a file.
 - ❌ `--quality medium` — not a valid value (use `draft | standard | high`).
 
+### Operational footguns (env, shell, ports — saw all of these eat real cycles)
+
+The CLI itself works; the shell and surrounding environment have a stable set of papercuts that cost cycles on every real run. Each line below comes from an observed time-sink in a recent build:
+
+- **`.env` is not auto-exported into the shell** — even if you have `HEYGEN_API_KEY=...` in `.env`, running `hyperframes sfx search` from the shell may report "API key required" because the CLI loads `.env` but child processes / piped commands don't. Either run from the project root (where the CLI's auto-load fires) or `set -a; source .env; set +a` once at the top of the session before the SFX / music / capture-video commands.
+- **macOS zsh has no `timeout`** — prefixing a command with `timeout 180 ...` produces `command not found`. Use `gtimeout` (from coreutils) if installed, or skip the timeout and rely on the command's own timeouts.
+- **`sfx search` cache is per-cwd** — `sfx search "..."` writes a per-project cache; `sfx add <id>` reads that cache to resolve the id → URL. If you `search` from the repo root and then `cd` into the project before `add`, the add can't find the cached id. Always search + add in the SAME cwd (the project root is the right one).
+- **`music add` is the same — search + add in the same cwd.**
+- **`sfx search --json` returns `{items: [...]}` not `{results: [...]}` or `{sounds: [...]}`** — the parser key is `items`. Common LLM intuition picks the wrong key and the first parse silently fails.
+- **`preview` registers a project by cwd; stale preview processes hold ports** — a previous session's preview server still running on port 5190 will show its OWN project at `http://localhost:5190`, NOT yours. Symptoms: the project list returned by `/api/projects` doesn't include your project, OR you see a different video than you expect. Fix: `pgrep -f "hyperframes preview"` to find the stale processes, `kill -9` them, then re-run from your project dir. Or use a different port (`preview --port 5200`).
+- **Some catalog SFX clips are silent (~-70 LUFS dead)** — `sfx add` prints the loudness analysis. If you see `peak ~-70 dBFS` or `loudness ~-70 LUFS`, the clip is dead — re-search and pick another id. Per step-5 landmine #12.
+
 ### Reference Files
 
 | File                                                                               | When to read                                                                                                                                   |
