@@ -1095,4 +1095,42 @@ describe("initSandboxRuntimeModular", () => {
     expect(video.muted).toBe(true);
     expect(audio.muted).toBe(false);
   });
+
+  it("skips the per-frame transport re-seek while a Studio manual-edit gesture is active", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    const seekTimes: number[] = [];
+    const tl = createMockTimeline(5);
+    const origTotalTime = tl.totalTime;
+    tl.totalTime = ((time: number, ...rest: unknown[]) => {
+      seekTimes.push(time);
+      (origTotalTime as Function).call(tl, time, ...rest);
+    }) as RuntimeTimelineLike["totalTime"];
+
+    document.body.innerHTML = `
+      <div data-composition-id="root" data-duration="5" data-width="1920" data-height="1080">
+        <div id="dragged" data-hf-studio-manual-edit-gesture="tok-1"></div>
+      </div>
+    `;
+    window.__timelines = { root: tl };
+    initSandboxRuntimeModular();
+
+    // The clock lands paused after init. While the gesture marker is present,
+    // the per-frame transport tick must NOT re-seek the timeline — otherwise it
+    // re-applies the animated value and clobbers the draft writer (gsap.set)
+    // that owns the dragged element, freezing it mid-drag.
+    const afterInit = seekTimes.length;
+    raf.step(16);
+    raf.step(16);
+    raf.step(16);
+    expect(seekTimes.length).toBe(afterInit);
+
+    // Clearing the marker (drop/cancel) resumes the per-frame re-seek.
+    document.getElementById("dragged")?.removeAttribute("data-hf-studio-manual-edit-gesture");
+    raf.step(16);
+    expect(seekTimes.length).toBeGreaterThan(afterInit);
+  });
 });
