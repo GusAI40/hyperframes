@@ -60,9 +60,11 @@ export function StudioRightPanel({
     domEditSelection,
     domEditGroupSelections,
     copiedAgentPrompt,
+    applyDomSelection,
     clearDomSelection,
     handleDomStyleCommit,
     handleDomAttributeCommit,
+    handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
@@ -181,8 +183,10 @@ export function StudioRightPanel({
                   multiSelectCount={domEditGroupSelections.length}
                   copiedAgentPrompt={copiedAgentPrompt}
                   onClearSelection={clearDomSelection}
+                  onSelectElement={applyDomSelection}
                   onSetStyle={handleDomStyleCommit}
                   onSetAttribute={handleDomAttributeCommit}
+                  onSetAttributeLive={handleDomAttributeLiveCommit}
                   onSetHtmlAttribute={handleDomHtmlAttributeCommit}
                   onSetManualOffset={handleDomPathOffsetCommit}
                   onSetManualSize={handleDomBoxSizeCommit}

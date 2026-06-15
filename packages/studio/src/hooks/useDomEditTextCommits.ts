@@ -147,6 +147,39 @@ export function useDomEditTextCommits({
     ],
   );
 
+  const handleDomAttributeLiveCommit = useCallback(
+    async (attr: string, value: string | null) => {
+      if (!domEditSelection) return;
+      const iframe = previewIframeRef.current;
+      const doc = iframe?.contentDocument;
+      if (doc) {
+        const el = findElementForSelection(doc, domEditSelection, activeCompPath);
+        if (el) {
+          const fullAttr = attr.startsWith("data-") ? attr : `data-${attr}`;
+          if (value === null || value === "") {
+            el.removeAttribute(fullAttr);
+          } else {
+            el.setAttribute(fullAttr, value);
+          }
+        }
+      }
+      const op: PatchOperation = { type: "attribute", property: attr, value };
+      try {
+        await persistDomEditOperations(domEditSelection, [op], {
+          label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
+          coalesceKey: `attr-live:${attr}:${getDomEditTargetKey(domEditSelection)}`,
+          skipRefresh: true,
+        });
+      } catch (err) {
+        console.warn(
+          "[Studio] Live attribute persist failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    },
+    [activeCompPath, domEditSelection, persistDomEditOperations, previewIframeRef],
+  );
+
   const handleDomHtmlAttributeCommit = useCallback(
     async (attr: string, value: string | null) => {
       if (!domEditSelection) return;
@@ -395,6 +428,7 @@ export function useDomEditTextCommits({
   return {
     handleDomStyleCommit,
     handleDomAttributeCommit,
+    handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
     handleDomTextCommit,
     commitDomTextFields,

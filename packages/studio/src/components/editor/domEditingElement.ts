@@ -21,6 +21,8 @@ import {
 
 // ─── Visibility ──────────────────────────────────────────────────────────────
 
+const COLOR_LOOK_SOURCE_HIDDEN_ATTR = "data-hf-color-look-source-hidden";
+
 export function isElementComputedVisible(el: HTMLElement): boolean {
   const win = el.ownerDocument.defaultView;
   if (!win) return true;
@@ -29,7 +31,12 @@ export function isElementComputedVisible(el: HTMLElement): boolean {
     const computed = win.getComputedStyle(current);
     if (computed.display === "none" || computed.visibility === "hidden") return false;
     const opacity = Number.parseFloat(computed.opacity);
-    if (Number.isFinite(opacity) && opacity <= 0.01) return false;
+    if (
+      Number.isFinite(opacity) &&
+      opacity <= 0.01 &&
+      !current.hasAttribute(COLOR_LOOK_SOURCE_HIDDEN_ATTR)
+    )
+      return false;
     current = current.parentElement;
   }
   return true;

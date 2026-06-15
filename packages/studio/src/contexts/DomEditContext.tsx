@@ -14,6 +14,7 @@ export interface DomEditActionsValue extends Pick<
   | "clearDomSelection"
   | "handleDomStyleCommit"
   | "handleDomAttributeCommit"
+  | "handleDomAttributeLiveCommit"
   | "handleDomHtmlAttributeCommit"
   | "handleDomPathOffsetCommit"
   | "handleDomGroupPathOffsetCommit"
@@ -114,6 +115,7 @@ export function DomEditProvider({
     clearDomSelection,
     handleDomStyleCommit,
     handleDomAttributeCommit,
+    handleDomAttributeLiveCommit,
     handleDomHtmlAttributeCommit,
     handleDomPathOffsetCommit,
     handleDomGroupPathOffsetCommit,
@@ -187,6 +189,7 @@ export function DomEditProvider({
       clearDomSelection,
       handleDomStyleCommit,
       handleDomAttributeCommit,
+      handleDomAttributeLiveCommit,
       handleDomHtmlAttributeCommit,
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
@@ -242,6 +245,7 @@ export function DomEditProvider({
       clearDomSelection,
       handleDomStyleCommit,
       handleDomAttributeCommit,
+      handleDomAttributeLiveCommit,
       handleDomHtmlAttributeCommit,
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,

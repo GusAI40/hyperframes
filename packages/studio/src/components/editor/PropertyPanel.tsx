@@ -14,6 +14,8 @@ import { MetricField, Section } from "./propertyPanelPrimitives";
 import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import { isMediaElement, MediaSection } from "./propertyPanelMediaSection";
+import { isLookCapableElement, LooksSection } from "./propertyPanelLooksSection";
+import { SceneElementsSection } from "./propertyPanelSceneElementsSection";
 import { TextSection, StyleSections } from "./propertyPanelSections";
 import { GsapAnimationSection } from "./GsapAnimationSection";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
@@ -45,8 +47,10 @@ export const PropertyPanel = memo(function PropertyPanel({
   multiSelectCount = 0,
   copiedAgentPrompt: _copiedAgentPrompt,
   onClearSelection,
+  onSelectElement,
   onSetStyle,
   onSetAttribute,
+  onSetAttributeLive,
   onSetHtmlAttribute,
   onSetManualOffset,
   onSetManualSize,
@@ -84,7 +88,7 @@ export const PropertyPanel = memo(function PropertyPanel({
   onToggleRecording,
 }: PropertyPanelProps) {
   const styles = element?.computedStyles ?? EMPTY_STYLES;
-  const { showToast } = useStudioShellContext();
+  const { activeCompPath, showToast } = useStudioShellContext();
   const [clipboardCopied, setClipboardCopied] = useState(false);
   const clipboardTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const storeTime = usePlayerStore((s) => s.currentTime);
@@ -321,6 +325,13 @@ export const PropertyPanel = memo(function PropertyPanel({
           />
         )}
 
+        <SceneElementsSection
+          element={element}
+          activeCompPath={activeCompPath}
+          previewIframeRef={previewIframeRef}
+          onSelectElement={onSelectElement}
+        />
+
         <TextSection
           element={element}
           styles={styles}
@@ -343,6 +354,16 @@ export const PropertyPanel = memo(function PropertyPanel({
             onSetStyle={onSetStyle}
             onSetAttribute={onSetAttribute}
             onSetHtmlAttribute={onSetHtmlAttribute}
+          />
+        )}
+
+        {isLookCapableElement(element) && (
+          <LooksSection
+            element={element}
+            assets={assets}
+            previewIframeRef={previewIframeRef}
+            onImportAssets={onImportAssets}
+            onSetAttributeLive={onSetAttributeLive}
           />
         )}
 
