@@ -1,21 +1,17 @@
 ---
 name: general-video
 description: >
-  Use as the fallback for custom HyperFrames HTML video composition authoring
-  when no specialized workflow fits. Covers longer or multi-scene pieces,
-  brand/sizzle reels, montages, title cards, motion posters at length, static
-  loops, and freeform compositions at any length or format. Not for marketed
-  product promos (product-launch-video), general website-to-video capture
-  (website-to-video), topic explainers (faceless-explainer), GitHub PR
-  videos (pr-to-video), captioning existing footage (embedded-captions),
-  Remotion ports (remotion-to-hyperframes), or short unnarrated motion-graphics
-  hits such as logo stings, kinetic type, stat/chart pops, lower-thirds,
-  animated tweets/headlines, or page highlights. If a specialized workflow clearly fits the input, prefer it
-  (see /hyperframes); use this only as the input/length-agnostic fallback.
+  The fallback workflow for authoring custom HyperFrames video compositions at
+  any length or format — longer or multi-scene pieces, brand / sizzle reels,
+  montages, title cards, static loops, and freeform compositions. Input- and
+  length-agnostic. If a specialized workflow clearly fits the input — a
+  marketed product, a website, a topic explainer, a GitHub PR, existing
+  footage, a short motion graphic, or a Remotion port — prefer it (see
+  /hyperframes); use this only as the general fallback when none fit.
 metadata: { "tags": "orchestrator, general-video, fallback, freeform, composition-authoring" }
 ---
 
-# general-video — general composition authoring
+# general-video — general video workflow
 
 > **Confirm the route before you build.** This is the **fallback** for custom composition authoring. If the input clearly fits a specialized workflow, prefer it: marketed product → `/product-launch-video`; general site → `/website-to-video`; topic explainer → `/faceless-explainer`; GitHub PR → `/pr-to-video`; existing footage → `/embedded-captions` · `/graphic-overlays`; short unnarrated motion graphic → `/motion-graphics`; Remotion port → `/remotion-to-hyperframes`. **Out of scope**: live / at-render-time data, NLE-style editing of a finished video, or producing footage HyperFrames can't capture. Unsure? **Read `/hyperframes` first.**
 
@@ -121,12 +117,3 @@ This maps the skill's full surface (see the `description`) to its references —
 - [ ] contrast warnings addressed; for multi-scene work, review the animation map (`hyperframes-animation/scripts/animation-map.mjs`)
 - [ ] deliver the preview; render to MP4 only on explicit request
 - [ ] surface the preview **only at handoff** (it is the stable, final preview); don't pop one mid-build — build-phase snapshots are headless
-
-## Not this workflow
-
-- A specific **product / company / SaaS / website** being marketed, launched, or promoted → `/product-launch-video`
-- A **concept / topic / article / how-X-works** being explained, no product → `/faceless-explainer`
-- A **GitHub PR / code change** → `/pr-to-video`
-- An **existing talking-head video** to add captions to → `/embedded-captions`
-- Porting an existing **Remotion** composition → `/remotion-to-hyperframes`
-- Cutting / editing a **finished video file** like an NLE → out of scope (HyperFrames composites HTML and media into a deterministic timeline; it does not edit footage)

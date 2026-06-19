@@ -1,6 +1,31 @@
-# Background Music
+# Background music (BGM)
 
-`npx hyperframes bgm --duration <s>` generates a stereo WAV from a mood prompt. Auto-detects between Google Lyria (cloud) and MusicGen (local).
+One music bed for the composition, via either route:
+
+- **HeyGen audio library (retrieval) — primary.** Search HeyGen's music catalog by mood and download the top track. No generation; same `~/.heygen` / `$HEYGEN_API_KEY` credential as `tts`. This is what the workflows use (reference impl: the product-launch workflow's `scripts/audio.mjs`).
+- **Local generation (Lyria / MusicGen) — alternative.** Generate a WAV from a mood prompt. ⚠ `npx hyperframes bgm` is **not in the current CLI `help`** — verify it in your build before relying on it; prefer the HeyGen route otherwise.
+
+## HeyGen retrieval (primary)
+
+`searchSounds(query, "music", { limit: 5 })` → `GET /audio/sounds?query=<mood>&type=music&limit=5`. Take the top result (ranked by `score`), download its presigned `audio_url` → `assets/bgm/track.mp3`.
+
+- **Query** = the composition's mood. In product-launch: storyboard frontmatter `music:`, falling back to `message` → `arc` → `"calm cinematic underscore"`.
+- **Cue** (`audio_meta.json` → `bgm`):
+
+```jsonc
+{
+  "path": "assets/bgm/track.mp3",
+  "volume": 0.8, // 0.8 under narration; 0.9 for a silent film (no voice)
+  "query": "calm cinematic underscore",
+  "duration_s": 42.0, // from the result's `duration`, else null
+}
+```
+
+- **No match → skip** (BGM is optional; never fail the render over it).
+
+## Local generation alternative — Lyria / MusicGen
+
+> ⚠ `npx hyperframes bgm` is not listed in the current CLI `help` (audio commands are `tts` / `transcribe` / `remove-background`; `beats` reads an existing track). Treat the rest of this file as the local-generation design — confirm the command exists in your build first.
 
 ## Provider chain
 
