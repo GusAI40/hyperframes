@@ -19,11 +19,9 @@ import {
   validateRemoteDebuggingPortDeps,
 } from "../utils/openBrowser.js";
 import {
-  resolveRuntimePath,
   resolvePlayerPath,
   resolveSlideshowPath,
   listenOnFreePort,
-  injectRuntime,
   assetContentType,
 } from "../utils/compositionServer.js";
 
@@ -76,12 +74,6 @@ export default defineCommand({
       return;
     }
 
-    const runtimePath = resolveRuntimePath();
-    if (!runtimePath) {
-      clack.log.error("HyperFrames runtime not found. Run `bun run build` first.");
-      process.exitCode = 1;
-      return;
-    }
     const playerPath = resolvePlayerPath();
     const slideshowPath = resolveSlideshowPath();
     if (!playerPath || !slideshowPath) {
@@ -125,14 +117,10 @@ export default defineCommand({
         "Cache-Control": "no-cache",
       }),
     );
-    app.get("/runtime.js", (ctx) =>
-      ctx.body(readFileSync(runtimePath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      }),
-    );
-
-    // Serve composition files (HTML gets the runtime injected; other assets pass through).
+    // Serve composition files raw. Slideshow compositions self-drive their own
+    // timelines (no engine runtime injected) — the same model demo.html / the
+    // standalone harness use; injecting a runtime would leave the composition
+    // engine-paused and blank.
     app.get("/composition/*", (ctx) => {
       const reqPath = ctx.req.path.replace("/composition/", "");
       const filePath = resolve(project.dir, reqPath);
@@ -140,9 +128,7 @@ export default defineCommand({
       // an in-project symlink nor a sibling dir sharing the prefix can escape.
       if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
       if (!existsSync(filePath)) return ctx.text("Not found", 404);
-      if (filePath.endsWith(".html")) {
-        return ctx.html(injectRuntime(readFileSync(filePath, "utf-8")));
-      }
+      if (filePath.endsWith(".html")) return ctx.html(readFileSync(filePath, "utf-8"));
       return ctx.body(readFileSync(filePath), 200, { "Content-Type": assetContentType(filePath) });
     });
 
@@ -193,6 +179,7 @@ function buildPresentPage(projectName: string, islandJson: string): string {
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { height: 100%; background: #0a0a0a; overflow: hidden; }
       hyperframes-slideshow { display: block; position: relative; width: 100vw; height: 100vh; }
+      hyperframes-player { position: absolute; inset: 0; }
       #present-btn {
         position: fixed; top: 18px; right: 18px; z-index: 99999;
         font: 600 14px/1 system-ui, sans-serif; color: #0d1321;
