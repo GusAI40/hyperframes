@@ -197,39 +197,62 @@ async function main() {
     }
     matteSrc = cfr;
   }
-  const mov = path.join(project, "_matte_tmp.mov");
   const t0 = Date.now();
-  const cached = fs.existsSync(
-    path.join(
-      os.homedir(),
-      ".cache",
-      "hyperframes",
-      "background-removal",
-      "models",
-      "u2net_human_seg.onnx",
-    ),
-  );
-  console.log(
-    `[matte] hyperframes remove-background (u2net_human_seg${cached ? "" : "; first run downloads ~168 MB"})… model load takes ~1-2 min with no output — not hung`,
-  );
-  const r = cp.spawnSync("node", [hfCli(), "remove-background", matteSrc, "-o", mov], {
-    stdio: ["ignore", "pipe", "pipe"],
-    encoding: "utf8",
-  });
-  if (r.status !== 0 || !fs.existsSync(mov)) {
-    console.error("[matte] remove-background FAILED:");
-    console.error((r.stderr || r.stdout || "").split("\n").slice(-8).join("\n"));
-    process.exit(4);
+  // Cloud subject matte (HeyGen CLI `background-removal`, Bria; /v3/background-removals) —
+  // opt in with EC_MATTE=cloud. Produces the same RGBA frames_fg as the local path below,
+  // and falls back to local on any failure (command not shipped yet / no API key / API error).
+  let cloudOk = false;
+  if ((process.env.EC_MATTE || "").toLowerCase() === "cloud") {
+    const cloud = require("./matte-cloud.cjs");
+    const avail = cloud.available();
+    if (!avail.ok) {
+      console.error(
+        `[matte] cloud matte unavailable — ${avail.reason}\n[matte] → falling back to local hyperframes remove-background`,
+      );
+    } else {
+      try {
+        cloud.toFramesFg({ matteSrc, fps, framesFg });
+        cloudOk = countPngs(framesFg) > 0;
+        if (cloudOk) console.log("[matte] cloud background-removal (HeyGen Bria) → frames_fg");
+      } catch (e) {
+        console.error(`[matte] cloud matte failed (${e.message}) → falling back to local`);
+      }
+    }
   }
+  if (!cloudOk) {
+    const mov = path.join(project, "_matte_tmp.mov");
+    const cached = fs.existsSync(
+      path.join(
+        os.homedir(),
+        ".cache",
+        "hyperframes",
+        "background-removal",
+        "models",
+        "u2net_human_seg.onnx",
+      ),
+    );
+    console.log(
+      `[matte] hyperframes remove-background (u2net_human_seg${cached ? "" : "; first run downloads ~168 MB"})… model load takes ~1-2 min with no output — not hung`,
+    );
+    const r = cp.spawnSync("node", [hfCli(), "remove-background", matteSrc, "-o", mov], {
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf8",
+    });
+    if (r.status !== 0 || !fs.existsSync(mov)) {
+      console.error("[matte] remove-background FAILED:");
+      console.error((r.stderr || r.stdout || "").split("\n").slice(-8).join("\n"));
+      process.exit(4);
+    }
 
-  // 2) burst to RGBA pngs at the project rate
-  fs.mkdirSync(framesFg, { recursive: true });
-  cp.execFileSync(
-    "ffmpeg",
-    ["-y", "-i", mov, "-vf", `fps=${fps}`, "-pix_fmt", "rgba", path.join(framesFg, "f_%04d.png")],
-    { stdio: "ignore" },
-  );
-  fs.rmSync(mov, { force: true });
+    // 2) burst to RGBA pngs at the project rate
+    fs.mkdirSync(framesFg, { recursive: true });
+    cp.execFileSync(
+      "ffmpeg",
+      ["-y", "-i", mov, "-vf", `fps=${fps}`, "-pix_fmt", "rgba", path.join(framesFg, "f_%04d.png")],
+      { stdio: "ignore" },
+    );
+    fs.rmSync(mov, { force: true });
+  }
 
   // 3) count parity with frames_bg. Composite overlays fg by INDEX at matte.fps,
   //    so any fg/bg count mismatch is a time desync (subject ghosting). Handle
