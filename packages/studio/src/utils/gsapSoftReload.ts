@@ -11,7 +11,69 @@ type IframeWindow = Window & {
     globalTimeline?: { getChildren?: (deep: boolean) => Array<{ kill?: () => void }> };
   };
   MotionPathPlugin?: unknown;
+  __hfMotionPathPluginLoading?: boolean;
 };
+
+/**
+ * CDN URL for the GSAP MotionPathPlugin. Shared between the one-time preview
+ * bootstrap (ensureMotionPathPluginLoaded) and the soft-reload fallback so the
+ * version is pinned in a single place.
+ */
+const MOTION_PATH_PLUGIN_CDN =
+  "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js";
+
+/**
+ * Pre-load + register MotionPathPlugin ONCE in the preview iframe so
+ * `win.MotionPathPlugin` is reliably set before any studio edit. Called from the
+ * preview bootstrap (NLELayout's onIframeLoad) on every iframe load.
+ *
+ * Why: when a user ADDS a motion path to a composition that never used one, the
+ * plugin isn't loaded, so the first soft reload takes the async `<script src>`
+ * load path — the timeline is killed/cleared while the CDN load is pending,
+ * producing a visible flash. Loading it eagerly here means the soft reload runs
+ * synchronously and `needsMotionPath && !win.MotionPathPlugin` never fires for
+ * studio edits.
+ *
+ * Idempotent (no-ops once the plugin is present or already loading) and
+ * defensive: no-ops without gsap/registerPlugin and tolerates a CDN failure
+ * (the soft-reload async fallback in applySoftReload still covers that case).
+ */
+export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): void {
+  if (!iframe?.contentWindow || !iframe.contentDocument) return;
+  const win = iframe.contentWindow as IframeWindow;
+  const doc = iframe.contentDocument;
+
+  // Already registered (composition shipped its own plugin, or a prior bootstrap
+  // ran) — register it on gsap to be safe, then bail.
+  if (win.MotionPathPlugin) {
+    try {
+      if (win.gsap?.registerPlugin) win.gsap.registerPlugin(win.MotionPathPlugin);
+    } catch {}
+    return;
+  }
+  if (!win.gsap?.registerPlugin) return;
+  // A load is already in flight for this iframe — don't queue a second script.
+  if (win.__hfMotionPathPluginLoading) return;
+
+  try {
+    win.__hfMotionPathPluginLoading = true;
+    const pluginScript = doc.createElement("script");
+    pluginScript.src = MOTION_PATH_PLUGIN_CDN;
+    const finalize = () => {
+      win.__hfMotionPathPluginLoading = false;
+      try {
+        if (win.MotionPathPlugin && win.gsap?.registerPlugin) {
+          win.gsap.registerPlugin(win.MotionPathPlugin);
+        }
+      } catch {}
+    };
+    pluginScript.onload = finalize;
+    pluginScript.onerror = finalize;
+    doc.head.appendChild(pluginScript);
+  } catch {
+    win.__hfMotionPathPluginLoading = false;
+  }
+}
 
 function isGsapScript(text: string): boolean {
   return (
@@ -171,7 +233,7 @@ export function applySoftReload(iframe: HTMLIFrameElement | null, scriptText: st
     if (needsMotionPath && !win.MotionPathPlugin && win.gsap) {
       deferredToAsync = true;
       const pluginScript = doc.createElement("script");
-      pluginScript.src = "https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/MotionPathPlugin.min.js";
+      pluginScript.src = MOTION_PATH_PLUGIN_CDN;
       pluginScript.onload = () => executeScript();
       pluginScript.onerror = () => executeScript();
       doc.head.appendChild(pluginScript);
