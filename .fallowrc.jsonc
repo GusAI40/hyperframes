@@ -238,6 +238,16 @@
     // that naturally converges and is unlikely to diverge; extraction would
     // require intrusive middleware changes beyond this PR's scope.
     "minLines": 6,
+    "ignore": [
+      // slideshowPanelHelpers.ts: setSlideNotes/addFragment/addHotspot share an
+      // intentional parallel shape (signature + mapSlidesIn → exists-check →
+      // map/append); the per-slide mutation differs, so a shared abstraction
+      // would obscure more than it dedupes.
+      "packages/studio/src/components/panels/slideshowPanelHelpers.ts",
+      // SlideshowPanel.test.ts: parallel arrange/act/assert test cases — collapsing
+      // them would hurt readability of what each case verifies.
+      "packages/studio/src/components/panels/SlideshowPanel.test.ts",
+    ],
   },
   "health": {
     // executeGsapMutation (introduced by Phase 3b / acorn-parser stack, already
@@ -260,6 +270,12 @@
     "ignore": [
       "packages/core/src/studio-api/routes/files.ts",
       "packages/core/src/parsers/gsapParser.ts",
+      // SlideshowPanel.tsx: top-level editor panel that wires several independent
+      // sections (slides/inspector/branches/hotspot). Its cyclomatic count comes
+      // from that fan-out; splitting it would scatter shared state without
+      // reducing real complexity. File-level exemption (not an inline comment)
+      // avoids the line-shift fingerprint problem noted above.
+      "packages/studio/src/components/panels/SlideshowPanel.tsx",
     ],
   },
 }

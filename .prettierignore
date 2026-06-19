@@ -14,3 +14,7 @@ skills/**/assets/vendor/
 skills/**/*.min.js
 # reference snippets with intentional pseudo-markup (literal "..." attributes)
 skills/graphic-overlays/references/frames/polaroid.html
+
+# generated demo compositions — large video-pipeline output (GSAP/Three/WebGL
+# embedded), not hand-authored source; reformatting them is churn + risk.
+registry/examples/**/*.html
