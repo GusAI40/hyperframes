@@ -163,16 +163,26 @@ export function resolveNewTweenRange(
   return { start: clampedStart, duration: Math.max(0.5, roundTo3(end - clampedStart)) };
 }
 
-async function fetchAnimationsForElement(sel: DomEditSelection): Promise<GsapAnimation[]> {
+// Authoritative parse of the current source for `sel`. Returns `null` when the
+// fetch can't run (no projectId / request failed) so callers can distinguish
+// "unavailable" from a genuine empty result (e.g. after a delete-all). An empty
+// array means the source was read and the element has no animations.
+async function tryFetchAnimationsForElement(
+  sel: DomEditSelection,
+): Promise<GsapAnimation[] | null> {
   const projectId = window.location.hash.match(/project\/([^?/]+)/)?.[1];
-  if (!projectId) return [];
+  if (!projectId) return null;
   const sourceFile = sel.sourceFile || "index.html";
   const parsed = await fetchParsedAnimations(projectId, sourceFile);
-  if (!parsed) return [];
+  if (!parsed) return null;
   return getAnimationsForElement(parsed.animations, {
     id: sel.id,
     selector: sel.selector,
   });
+}
+
+async function fetchAnimationsForElement(sel: DomEditSelection): Promise<GsapAnimation[]> {
+  return (await tryFetchAnimationsForElement(sel)) ?? [];
 }
 
 /**
@@ -335,10 +345,15 @@ export function useEnableKeyframes(
     const t = usePlayerStore.getState().currentTime;
     const iframe = session.previewIframeRef?.current ?? null;
 
-    let anims = session.selectedGsapAnimations;
-    if (anims.length === 0) {
-      anims = await fetchAnimationsForElement(sel);
-    }
+    // `selectedGsapAnimations` is a studio-side selection cache that can lag a
+    // mutation — e.g. right after a delete-all it may still hold the just-removed
+    // tween, which would route us into the wrong branch below (editing a tween
+    // that no longer exists in source). Prefer the authoritative parse of the
+    // current source; an empty parse is a valid "no animations" result and is
+    // honored. Fall back to the cache only when the fetch couldn't run at all
+    // (no projectId / request failed), preserving prior behavior offline.
+    const fetched = await tryFetchAnimationsForElement(sel);
+    const anims = fetched ?? session.selectedGsapAnimations;
 
     // An arc/motionPath tween carries reconstructed x/y keyframes too, so match it
     // first and edit it as waypoints — treating it as plain keyframes would break

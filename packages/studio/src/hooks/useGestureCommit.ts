@@ -21,6 +21,42 @@ interface GestureSessionRef {
   ) => Promise<void>;
 }
 
+type RecordedKeyframe = {
+  percentage: number;
+  properties: Record<string, number | string>;
+};
+
+// Split a recorded gesture's keyframes by property group so each emitted tween
+// carries a single group's props. A single-group `.to(...)` parses back with a
+// concrete `propertyGroup` (position/scale/...); a mixed-prop tween parses as a
+// legacy untagged tween, which the position-only drag intercept can't target.
+// A gesture spanning multiple groups (e.g. x/y + opacity) therefore yields one
+// correctly-tagged tween per group rather than one mixed tween.
+function partitionKeyframesByGroup(keyframes: RecordedKeyframe[]): RecordedKeyframe[][] {
+  const byGroup = new Map<string, RecordedKeyframe[]>();
+  for (const kf of keyframes) {
+    const perGroup = new Map<string, Record<string, number | string>>();
+    for (const [key, value] of Object.entries(kf.properties)) {
+      const group = classifyPropertyGroup(key);
+      let props = perGroup.get(group);
+      if (!props) {
+        props = {};
+        perGroup.set(group, props);
+      }
+      props[key] = value;
+    }
+    for (const [group, props] of perGroup) {
+      let arr = byGroup.get(group);
+      if (!arr) {
+        arr = [];
+        byGroup.set(group, arr);
+      }
+      arr.push({ percentage: kf.percentage, properties: props });
+    }
+  }
+  return Array.from(byGroup.values());
+}
+
 interface UseGestureCommitParams {
   domEditSessionRef: React.MutableRefObject<GestureSessionRef>;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
@@ -169,28 +205,32 @@ export function useGestureCommit({
               { label: "Gesture recording (merge)", softReload: true },
             );
           } else {
+            for (const groupKfs of partitionKeyframesByGroup(keyframes)) {
+              await liveSession.commitMutation(
+                {
+                  type: "add-with-keyframes",
+                  targetSelector: selector,
+                  position: roundTo3(recStart),
+                  duration: roundTo3(duration),
+                  keyframes: groupKfs,
+                },
+                { label: "Gesture recording (new range)", softReload: true },
+              );
+            }
+          }
+        } else {
+          for (const groupKfs of partitionKeyframesByGroup(keyframes)) {
             await liveSession.commitMutation(
               {
                 type: "add-with-keyframes",
                 targetSelector: selector,
                 position: roundTo3(recStart),
                 duration: roundTo3(duration),
-                keyframes,
+                keyframes: groupKfs,
               },
-              { label: "Gesture recording (new range)", softReload: true },
+              { label: "Gesture recording", softReload: true },
             );
           }
-        } else {
-          await liveSession.commitMutation(
-            {
-              type: "add-with-keyframes",
-              targetSelector: selector,
-              position: roundTo3(recStart),
-              duration: roundTo3(duration),
-              keyframes,
-            },
-            { label: "Gesture recording", softReload: true },
-          );
         }
       }
       showToast(`Recorded ${sortedPcts.length} keyframes`, "info");

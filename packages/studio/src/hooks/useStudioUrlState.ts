@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../player";
 import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
 import { clampNumber, type RightPanelTab } from "../utils/studioHelpers";
@@ -78,6 +78,10 @@ export function useStudioUrlState({
   const hydratedSeekRef = useRef(initialState.currentTime == null);
   const hydratedInitialTimeRef = useRef(initialState.currentTime == null);
   const hydratedSelectionRef = useRef(initialState.selection == null);
+  // Mirrors hydratedSelectionRef as state so the selection-hydration effect can
+  // drop its currentTime subscription once hydration completes — otherwise it
+  // re-runs on every playhead tick for the lifetime of the session.
+  const [selectionHydrated, setSelectionHydrated] = useState(initialState.selection == null);
   const pendingSelectionRef = useRef(initialState.selection);
   const stableTimeRef = useRef<number | null>(initialState.currentTime);
 
@@ -149,25 +153,36 @@ export function useStudioUrlState({
     hydratedSeekRef.current = true;
   }, [projectId, compositionLoading, duration, initialState.currentTime]);
 
+  // Once hydration completes the selection effect no longer needs the playhead,
+  // so freeze its time dependency. This stops the effect re-running on every tick
+  // for the rest of the session (cosmetic perf) while still retrying as the seek
+  // settles before hydration.
+  const selectionHydrationTime = selectionHydrated ? 0 : currentTime;
   useEffect(() => {
     if (!projectId || hydratedSelectionRef.current || compositionLoading) return;
     if (!hydratedSeekRef.current) return;
     const targetTime = initialState.currentTime;
-    if (targetTime != null && Math.abs(currentTime - stableTimeRef.current!) > 0.05) return;
+    if (targetTime != null && Math.abs(selectionHydrationTime - stableTimeRef.current!) > 0.05) {
+      return;
+    }
 
+    const markHydrated = () => {
+      hydratedSelectionRef.current = true;
+      setSelectionHydrated(true);
+    };
     const pendingSelection = pendingSelectionRef.current;
     if (!pendingSelection) {
-      hydratedSelectionRef.current = true;
+      markHydrated();
       return;
     }
     // Doc not ready yet → leave hydration pending so a later tick retries.
     if (!applyUrlSelection(pendingSelection)) return;
-    hydratedSelectionRef.current = true;
+    markHydrated();
     pendingSelectionRef.current = null;
   }, [
     applyUrlSelection,
     compositionLoading,
-    currentTime,
+    selectionHydrationTime,
     initialState.currentTime,
     projectId,
     refreshKey,

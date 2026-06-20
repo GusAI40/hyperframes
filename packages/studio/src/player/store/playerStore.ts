@@ -374,6 +374,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 // Bug-bash aid: expose the store so a reproduction can dump live state from the
 // console, e.g. `__playerStore.getState().selectedElementId`. Harmless read
 // handle; no behavioural effect.
-if (typeof window !== "undefined") {
+// Only in dev. `import.meta.env` may be undefined in non-Vite bundlers (Next.js
+// Turbopack), so guard the access like the telemetry client does.
+function isDevBuild(): boolean {
+  try {
+    return import.meta.env.DEV === true;
+  } catch {
+    return false;
+  }
+}
+if (isDevBuild() && typeof window !== "undefined") {
   (window as unknown as { __playerStore?: typeof usePlayerStore }).__playerStore = usePlayerStore;
 }
