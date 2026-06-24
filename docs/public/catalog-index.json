@@ -42,6 +42,20 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/blue-sweater-intro-video.png"
     },
     {
+        "name": "bottom-up-letters",
+        "type": "component",
+        "title": "Bottom Up Letters",
+        "description": "Splits text into letters and reveals each glyph from below with deterministic staggered timing",
+        "tags": [
+            "motion-primitive",
+            "text",
+            "letters",
+            "reveal"
+        ],
+        "href": "/catalog/components/bottom-up-letters",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/bottom-up-letters.png"
+    },
+    {
         "name": "caption-blend-difference",
         "type": "component",
         "title": "Blend Difference",
@@ -338,6 +352,34 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/domain-warp-dissolve.png"
     },
     {
+        "name": "dynamic-grid",
+        "type": "component",
+        "title": "Dynamic Grid",
+        "description": "A responsive animated grid background driven by CSS variables for SaaS, code, and data scenes",
+        "tags": [
+            "motion-primitive",
+            "background",
+            "grid",
+            "ui"
+        ],
+        "href": "/catalog/components/dynamic-grid",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/dynamic-grid.png"
+    },
+    {
+        "name": "fade-through",
+        "type": "component",
+        "title": "Fade Through",
+        "description": "A calm transition primitive that fades one layer out, passes through a wash, and reveals the next layer",
+        "tags": [
+            "motion-primitive",
+            "transition",
+            "fade",
+            "scene"
+        ],
+        "href": "/catalog/components/fade-through",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/fade-through.png"
+    },
+    {
         "name": "flash-through-white",
         "type": "block",
         "title": "Flash Through White",
@@ -413,6 +455,20 @@
         ],
         "href": "/catalog/components/grid-pixelate-wipe",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/grid-pixelate-wipe.png"
+    },
+    {
+        "name": "inline-highlight",
+        "type": "component",
+        "title": "Inline Highlight",
+        "description": "A clean marker-style inline highlight that animates behind text using a CSS scale variable",
+        "tags": [
+            "motion-primitive",
+            "text",
+            "highlight",
+            "caption"
+        ],
+        "href": "/catalog/components/inline-highlight",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/inline-highlight.png"
     },
     {
         "name": "motion-blur",
@@ -581,6 +637,20 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/north-korea-locked-down.png"
     },
     {
+        "name": "number-wheel",
+        "type": "component",
+        "title": "Number Wheel",
+        "description": "A rolling digit counter primitive for metrics, prices, counts, and scoreboards",
+        "tags": [
+            "motion-primitive",
+            "number",
+            "counter",
+            "data"
+        ],
+        "href": "/catalog/components/number-wheel",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/number-wheel.png"
+    },
+    {
         "name": "nyc-paris-flight",
         "type": "block",
         "title": "NYC Paris Flight",
@@ -690,6 +760,34 @@
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shimmer-sweep.png"
     },
     {
+        "name": "simulated-cursor",
+        "type": "component",
+        "title": "Simulated Cursor",
+        "description": "A lightweight cursor pointer and click pulse for product walkthroughs and agent UI demos",
+        "tags": [
+            "motion-primitive",
+            "cursor",
+            "ui",
+            "walkthrough"
+        ],
+        "href": "/catalog/components/simulated-cursor",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/simulated-cursor.png"
+    },
+    {
+        "name": "soft-blur-in",
+        "type": "component",
+        "title": "Soft Blur In",
+        "description": "A soft opacity, blur, and lift reveal for headlines, captions, and product UI callouts",
+        "tags": [
+            "motion-primitive",
+            "text",
+            "reveal",
+            "blur"
+        ],
+        "href": "/catalog/components/soft-blur-in",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/soft-blur-in.png"
+    },
+    {
         "name": "spain-map",
         "type": "block",
         "title": "Spain Map",
@@ -768,6 +866,20 @@
         ],
         "href": "/catalog/blocks/tiktok-follow",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/tiktok-follow.png"
+    },
+    {
+        "name": "tracking-in",
+        "type": "component",
+        "title": "Tracking In",
+        "description": "A precise letter-spacing reveal for premium headings and interface labels",
+        "tags": [
+            "motion-primitive",
+            "text",
+            "reveal",
+            "typography"
+        ],
+        "href": "/catalog/components/tracking-in",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/tracking-in.png"
     },
     {
         "name": "transitions-3d",

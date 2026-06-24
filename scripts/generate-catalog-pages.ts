@@ -502,7 +502,7 @@ function main(): void {
   const publicDir = join(docsDir, "public");
   mkdirSync(publicDir, { recursive: true });
   const indexPath = join(publicDir, "catalog-index.json");
-  writeFileSync(indexPath, JSON.stringify(catalogIndex, null, 2) + "\n", "utf-8");
+  writeFileSync(indexPath, JSON.stringify(catalogIndex, null, 4) + "\n", "utf-8");
   console.log(`\n  ✓ public/catalog-index.json (${catalogIndex.length} items)`);
 
   // Update docs.json navigation with generated catalog pages.
@@ -527,8 +527,11 @@ function main(): void {
     "CSS Transitions": 5,
     Showcases: 6,
     Data: 7,
-    Effects: 8,
-    Blocks: 9,
+    "Motion Primitives": 8,
+    "Text Effects": 9,
+    Effects: 10,
+    Blocks: 11,
+    "Code Snippets": 12,
   };
 
   // fallow-ignore-next-line complexity
@@ -542,6 +545,9 @@ function main(): void {
     // Code animations (morph, flight, diff, …) — keyed on the code-animation tag so
     // they group separately from the static code-snippet themes.
     if (tags.includes("code-animation")) return "Code Animations";
+    if (tags.includes("motion-primitive")) return "Motion Primitives";
+    if (tags.includes("text-effect")) return "Text Effects";
+    if (entry.name.startsWith("code-snippet-")) return "Code Snippets";
     // Single-tag mapping
     if (tags.includes("social")) return "Social Overlays";
     if (tags.includes("transition"))

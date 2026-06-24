@@ -80,6 +80,38 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "soft-blur-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "tracking-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "bottom-up-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "inline-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "number-wheel",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "simulated-cursor",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "fade-through",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "dynamic-grid",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "grid-pixelate-wipe",
       "type": "hyperframes:component"
     },

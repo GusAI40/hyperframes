@@ -239,6 +239,19 @@
             ]
           },
           {
+            "group": "Motion Primitives",
+            "pages": [
+              "catalog/components/bottom-up-letters",
+              "catalog/components/dynamic-grid",
+              "catalog/components/fade-through",
+              "catalog/components/inline-highlight",
+              "catalog/components/number-wheel",
+              "catalog/components/simulated-cursor",
+              "catalog/components/soft-blur-in",
+              "catalog/components/tracking-in"
+            ]
+          },
+          {
             "group": "Effects",
             "pages": [
               "catalog/components/grain-overlay",
