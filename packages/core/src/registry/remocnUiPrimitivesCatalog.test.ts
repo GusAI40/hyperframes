@@ -95,6 +95,33 @@ const uiFlows = [
   "signup-flow",
 ] as const;
 
+const typographyPrimitives = [
+  "blur-out-up",
+  "focus-blur-resolve",
+  "kinetic-center-build",
+  "line-by-line-slide",
+  "marker-highlight",
+  "mask-reveal-up",
+  "masked-slide-reveal",
+  "matrix-decode",
+  "per-character-rise",
+  "per-word-crossfade",
+  "perspective-marquee",
+  "rgb-glitch-text",
+  "rolling-number",
+  "scale-down-fade",
+  "shared-axis-y",
+  "shared-axis-z",
+  "short-slide-down",
+  "short-slide-right",
+  "slot-machine-roll",
+  "spring-scale-in",
+  "staggered-fade-up",
+  "strikethrough-replace",
+  "top-down-letters",
+  "typewriter",
+] as const;
+
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf-8")) as T;
 }
@@ -149,5 +176,13 @@ describe("remocn UI primitives catalog slice", () => {
 
   it("registers composed Remocn UI flows as reusable agent building blocks", () => {
     expectRegisteredComponents(uiFlows, ["ui-flow", "remocn-port"]);
+  });
+
+  it("ports remocn typography motion primitives into HyperFrames snippets", () => {
+    expectRegisteredComponents(typographyPrimitives, [
+      "motion-primitive",
+      "remocn-port",
+      "typography",
+    ]);
   });
 });

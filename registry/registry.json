@@ -870,6 +870,102 @@
     {
       "name": "tabs-slide-indicator",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "blur-out-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "focus-blur-resolve",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "kinetic-center-build",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "line-by-line-slide",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "marker-highlight",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "mask-reveal-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "masked-slide-reveal",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "matrix-decode",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "per-character-rise",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "per-word-crossfade",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "perspective-marquee",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "rgb-glitch-text",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "rolling-number",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "scale-down-fade",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shared-axis-y",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "shared-axis-z",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "short-slide-down",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "short-slide-right",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "slot-machine-roll",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "spring-scale-in",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "staggered-fade-up",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "strikethrough-replace",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "top-down-letters",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "typewriter",
+      "type": "hyperframes:component"
     }
   ]
 }

@@ -2384,5 +2384,317 @@
         ],
         "href": "/catalog/components/text-state-swap",
         "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/text-state-swap.png"
+    },
+    {
+        "name": "blur-out-up",
+        "type": "component",
+        "title": "Blur Out Up",
+        "description": "Words arrive clean and depart upward with increasing blur for airy exits.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/blur-out-up",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/blur-out-up.png"
+    },
+    {
+        "name": "focus-blur-resolve",
+        "type": "component",
+        "title": "Focus Blur Resolve",
+        "description": "A premium focus pull from heavy blur to crisp text, then a soft blur-out exit.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/focus-blur-resolve",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/focus-blur-resolve.png"
+    },
+    {
+        "name": "kinetic-center-build",
+        "type": "component",
+        "title": "Kinetic Center Build",
+        "description": "A centered phrase builder where words push into place until the line locks.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/kinetic-center-build",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/kinetic-center-build.png"
+    },
+    {
+        "name": "line-by-line-slide",
+        "type": "component",
+        "title": "Line-by-Line Slide",
+        "description": "Each line enters from the left with staggered slide and exits to the right.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/line-by-line-slide",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/line-by-line-slide.png"
+    },
+    {
+        "name": "marker-highlight",
+        "type": "component",
+        "title": "Marker Highlight",
+        "description": "A marker block draws behind a phrase as the text color shifts.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/marker-highlight",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/marker-highlight.png"
+    },
+    {
+        "name": "mask-reveal-up",
+        "type": "component",
+        "title": "Mask Reveal Up",
+        "description": "Lines reveal upward through a tight mask with compact stagger.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/mask-reveal-up",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/mask-reveal-up.png"
+    },
+    {
+        "name": "masked-slide-reveal",
+        "type": "component",
+        "title": "Masked Slide Reveal",
+        "description": "Words slide up out of an invisible horizontal mask one after another.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/masked-slide-reveal",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/masked-slide-reveal.png"
+    },
+    {
+        "name": "matrix-decode",
+        "type": "component",
+        "title": "Matrix Decode",
+        "description": "Random scramble resolves left-to-right into the target text.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/matrix-decode",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/matrix-decode.png"
+    },
+    {
+        "name": "per-character-rise",
+        "type": "component",
+        "title": "Per Character Rise",
+        "description": "Letters slide up from below with crisp, deliberate kinetic timing.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/per-character-rise",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/per-character-rise.png"
+    },
+    {
+        "name": "per-word-crossfade",
+        "type": "component",
+        "title": "Per-Word Crossfade",
+        "description": "Words gently fade into place with a short vertical drift for calm keynote rhythm.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/per-word-crossfade",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/per-word-crossfade.png"
+    },
+    {
+        "name": "perspective-marquee",
+        "type": "component",
+        "title": "Perspective Marquee",
+        "description": "A 3D tilted marquee with depth feel as items roll toward the horizon.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/perspective-marquee",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/perspective-marquee.png"
+    },
+    {
+        "name": "rgb-glitch-text",
+        "type": "component",
+        "title": "RGB Glitch Text",
+        "description": "RGB-offset text copies jitter briefly for a controlled glitch window.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/rgb-glitch-text",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/rgb-glitch-text.png"
+    },
+    {
+        "name": "rolling-number",
+        "type": "component",
+        "title": "Rolling Number",
+        "description": "Odometer-style number places roll at their own speed and settle exactly.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/rolling-number",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/rolling-number.png"
+    },
+    {
+        "name": "scale-down-fade",
+        "type": "component",
+        "title": "Scale Down Fade",
+        "description": "A restrained premium settle-in followed by scale-down fade readiness.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/scale-down-fade",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/scale-down-fade.png"
+    },
+    {
+        "name": "shared-axis-y",
+        "type": "component",
+        "title": "Shared Axis Y",
+        "description": "Per-word vertical shared-axis transition for sharp editorial swaps.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/shared-axis-y",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shared-axis-y.png"
+    },
+    {
+        "name": "shared-axis-z",
+        "type": "component",
+        "title": "Shared Axis Z",
+        "description": "Scale-based shared-axis transition for focus shifts and context depth.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/shared-axis-z",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/shared-axis-z.png"
+    },
+    {
+        "name": "short-slide-down",
+        "type": "component",
+        "title": "Short Slide Down",
+        "description": "New words drop from above and push the stack downward into a locked composition.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/short-slide-down",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/short-slide-down.png"
+    },
+    {
+        "name": "short-slide-right",
+        "type": "component",
+        "title": "Short Slide Right",
+        "description": "The phrase glides in from the left while words reveal in sequence.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/short-slide-right",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/short-slide-right.png"
+    },
+    {
+        "name": "slot-machine-roll",
+        "type": "component",
+        "title": "Slot Machine Roll",
+        "description": "A vertical reel scrolls characters from one value to another.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/slot-machine-roll",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/slot-machine-roll.png"
+    },
+    {
+        "name": "spring-scale-in",
+        "type": "component",
+        "title": "Spring Scale In",
+        "description": "Words pop in with soft overshoot scale like a physical spring settling.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/spring-scale-in",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/spring-scale-in.png"
+    },
+    {
+        "name": "staggered-fade-up",
+        "type": "component",
+        "title": "Staggered Fade Up",
+        "description": "Words fade in and slide up one after another with configurable delay.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/staggered-fade-up",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/staggered-fade-up.png"
+    },
+    {
+        "name": "strikethrough-replace",
+        "type": "component",
+        "title": "Strikethrough Replace",
+        "description": "Draw a strike line across old text, then reveal the replacement.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/strikethrough-replace",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/strikethrough-replace.png"
+    },
+    {
+        "name": "top-down-letters",
+        "type": "component",
+        "title": "Top-Down Letters",
+        "description": "Letters descend from above in a pronounced staircase with zero blur.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/top-down-letters",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/top-down-letters.png"
+    },
+    {
+        "name": "typewriter",
+        "type": "component",
+        "title": "Typewriter",
+        "description": "Character-by-character text reveal with a deterministic blinking cursor.",
+        "tags": [
+            "motion-primitive",
+            "remocn-port",
+            "typography"
+        ],
+        "href": "/catalog/components/typewriter",
+        "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/typewriter.png"
     }
 ]
