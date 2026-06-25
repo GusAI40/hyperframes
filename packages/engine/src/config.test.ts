@@ -114,6 +114,36 @@ describe("resolveConfig", () => {
     expect(config.disableGpu).toBe(false);
   });
 
+  describe("forceScreenshot / BeginFrame env compatibility", () => {
+    it("disables BeginFrame when PRODUCER_ENABLE_BEGIN_FRAME is falsey", () => {
+      setEnv("PRODUCER_ENABLE_BEGIN_FRAME", "false");
+      for (const v of ["false", "off", "0", "FALSE"]) {
+        process.env.PRODUCER_ENABLE_BEGIN_FRAME = v;
+        expect(resolveConfig().forceScreenshot).toBe(true);
+      }
+    });
+
+    it("keeps BeginFrame eligible when PRODUCER_ENABLE_BEGIN_FRAME is truthy or invalid", () => {
+      setEnv("PRODUCER_ENABLE_BEGIN_FRAME", "true");
+      for (const v of ["true", "on", "1", "maybe"]) {
+        process.env.PRODUCER_ENABLE_BEGIN_FRAME = v;
+        expect(resolveConfig().forceScreenshot).toBe(false);
+      }
+    });
+
+    it("preserves PRODUCER_FORCE_SCREENSHOT as the direct force-screenshot knob", () => {
+      setEnv("PRODUCER_FORCE_SCREENSHOT", "true");
+      setEnv("PRODUCER_ENABLE_BEGIN_FRAME", "true");
+
+      expect(resolveConfig().forceScreenshot).toBe(true);
+    });
+
+    it("lets explicit overrides beat both env knobs", () => {
+      setEnv("PRODUCER_ENABLE_BEGIN_FRAME", "false");
+      expect(resolveConfig({ forceScreenshot: false }).forceScreenshot).toBe(false);
+    });
+  });
+
   it("reads browser GPU mode from env", () => {
     setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
 

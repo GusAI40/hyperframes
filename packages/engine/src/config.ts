@@ -284,6 +284,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     if (raw === undefined) return fallback;
     return raw === "true";
   };
+  const envFalse = (key: string): boolean => {
+    const raw = env(key)?.trim().toLowerCase();
+    return raw === "false" || raw === "off" || raw === "0";
+  };
   const envVp9CpuUsed = (): number => {
     const raw = env("PRODUCER_VP9_CPU_USED");
     if (raw === undefined || raw === "") return DEFAULT_CONFIG.vp9CpuUsed;
@@ -306,6 +310,9 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     const raw = env("HF_STATIC_DEDUP")?.trim().toLowerCase();
     return !(raw === "false" || raw === "off" || raw === "0");
   };
+  const resolveForceScreenshot = (): boolean =>
+    envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot) ||
+    envFalse("PRODUCER_ENABLE_BEGIN_FRAME");
 
   // Env-var layer (backward compat)
   const fromEnv: Partial<EngineConfig> = {
@@ -330,7 +337,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       ? Number(env("PRODUCER_EXPECTED_CHROMIUM_MAJOR"))
       : undefined,
 
-    forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
+    forceScreenshot: resolveForceScreenshot(),
     staticFrameDedup: resolveStaticFrameDedup(),
     lowMemoryMode: resolveLowMemoryMode(),
     enablePageSideCompositing: envBool(
