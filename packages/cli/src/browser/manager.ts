@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -27,6 +27,57 @@ const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
 // `resolveHeadlessShellPath` scans the same directory; the CLI must look here
 // too or it silently picks system Chrome over a perfectly good headless-shell.
 const PUPPETEER_CACHE_DIR = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
+
+// `@puppeteer/browsers`' install() has no concurrency guard of its own — two
+// CLI invocations that both miss the cache at the same time both extract into
+// the same target directory simultaneously. A killed/interrupted extraction
+// from that race can leave a binary that merely *exists* (so doctor/lint/
+// validate all report healthy) while missing bits a clean install sets (e.g.
+// macOS Gatekeeper/quarantine + GPU/Metal entitlements) — reported as headless
+// GPU frame capture silently returning all-black frames despite --browser-gpu
+// auto/hardware, invisible until someone inspects the actual pixels.
+//
+// mkdirSync is atomic (EEXIST if another process already holds it), so it
+// doubles as a zero-dependency cross-process mutex — no lockfile library needed.
+const INSTALL_LOCK_DIR = join(CACHE_DIR, ".install.lock");
+const INSTALL_LOCK_TIMEOUT_MS = 120_000; // generous: a real download+extract can take a while
+const INSTALL_LOCK_POLL_MS = 200;
+
+// timeoutMs/pollMs are parameters (not just the module constants) so tests can
+// exercise the reclaim-on-timeout branch with real but tiny waits instead of
+// mocking Date.now()/setTimeout through the full ensureBrowser call graph.
+export async function withInstallLock<T>(
+  fn: () => Promise<T>,
+  timeoutMs = INSTALL_LOCK_TIMEOUT_MS,
+  pollMs = INSTALL_LOCK_POLL_MS,
+): Promise<T> {
+  // recursive:false below needs the parent to already exist (unlike `mkdir -p`).
+  if (!existsSync(CACHE_DIR)) mkdirSync(CACHE_DIR, { recursive: true });
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      // recursive:false is load-bearing: it's what makes this throw EEXIST
+      // (and therefore act as a mutex) instead of silently no-op'ing like
+      // `mkdir -p` when the lock dir already exists.
+      mkdirSync(INSTALL_LOCK_DIR, { recursive: false });
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (Date.now() > deadline) {
+        // Held past any plausible real install — the previous holder crashed
+        // or was killed mid-extraction. Reclaim rather than hang forever.
+        rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    rmSync(INSTALL_LOCK_DIR, { recursive: true, force: true });
+  }
+}
 
 export type BrowserSource = "env" | "cache" | "system" | "download";
 
@@ -281,7 +332,7 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
       `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
     );
     try {
-      return await downloadBrowser();
+      return await withInstallLock(() => downloadBrowser());
     } catch (err) {
       const cause = normalizeErrorMessage(err);
       throw new Error(
@@ -361,7 +412,7 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
     console.warn(
       `[browser] Cached binary missing at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
     );
-    return downloadBrowser(options);
+    return withInstallLock(() => downloadBrowser(options));
   }
 
   const fromSystem = findFromSystem();
@@ -370,7 +421,14 @@ export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<Bro
     return fromSystem;
   }
 
-  return downloadBrowser(options);
+  return withInstallLock(async () => {
+    // Re-check after acquiring the lock: a concurrent invocation may have
+    // finished installing while we were waiting, in which case reuse its
+    // result instead of downloading and extracting a second time.
+    const afterLock = await findFromCache();
+    if (afterLock.result) return afterLock.result;
+    return downloadBrowser(options);
+  });
 }
 
 async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {

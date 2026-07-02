@@ -54,20 +54,34 @@ interface FsMockOptions {
 }
 
 function installFsMocks({ existing, dirs }: FsMockOptions) {
+  // Mutable, and returned, so tests can pre-seed a "lock already held" path or
+  // assert the lock dir doesn't leak after ensureBrowser resolves.
+  const paths = new Set(existing);
   vi.doMock("node:fs", () => ({
-    existsSync: (p: string) => existing.has(p),
+    existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
       const entries = dirs?.[p];
       if (!entries) throw new Error(`ENOENT: readdirSync mock had no entry for ${p}`);
       return entries;
     },
-    rmSync: () => {},
+    mkdirSync: (p: string, opts?: { recursive?: boolean }) => {
+      if (!opts?.recursive && paths.has(p)) {
+        const err = new Error(`EEXIST: file already exists, mkdir '${p}'`);
+        (err as NodeJS.ErrnoException).code = "EEXIST";
+        throw err;
+      }
+      paths.add(p);
+    },
+    rmSync: (p: string) => {
+      paths.delete(p);
+    },
   }));
   vi.doMock("node:os", () => ({
     homedir: () => FAKE_HOME,
     platform: () => "linux",
     arch: () => "x64",
   }));
+  return paths;
 }
 
 function installPuppeteerBrowsersMock(
@@ -145,6 +159,49 @@ describe("findBrowser — cache resolution", () => {
 
     expect(result).toEqual({ executablePath: redownloadedBinary, source: "download" });
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary missing"));
+  });
+
+  it("ensureBrowser does not leak the install lock directory after a successful download", async () => {
+    // Regression: @puppeteer/browsers' install() has no concurrency guard —
+    // two CLI invocations that both miss the cache AND system Chrome (the
+    // reported scenario: two `hyperframes browser ensure` runs racing) hit
+    // ensureBrowser's final download-of-last-resort at once, racing on the
+    // same extract target. mkdirSync as an atomic mutex closes that race;
+    // this asserts the lock is actually released afterward (a leaked lock
+    // would permanently wedge every future render on this machine).
+    const HF_LOCK = join(HF_CACHE, ".install.lock");
+    const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "downloaded");
+    // Cache dir exists but is empty (no manifest entries) — distinct from the
+    // ENOTDIR "cache unreadable" case, which falls back to system instead.
+    const paths = installFsMocks({ existing: new Set([HF_CACHE]) });
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [],
+      installResult: { executablePath: downloadedBinary },
+    });
+
+    const { ensureBrowser } = await import("./manager.js");
+    const result = await ensureBrowser();
+
+    expect(result).toEqual({ executablePath: downloadedBinary, source: "download" });
+    expect(paths.has(HF_LOCK)).toBe(false);
+  });
+
+  it("withInstallLock reclaims a lock held past the timeout instead of hanging forever", async () => {
+    // A crashed/killed process could leave the lock directory behind
+    // permanently. Reclaiming after a timeout (rather than hanging or
+    // refusing forever) is the behavior that makes the lock safe to add at
+    // all — otherwise one bad exit wedges every future render. Exercises
+    // withInstallLock directly with tiny real timeouts (it takes an
+    // injectable timeoutMs/pollMs for exactly this) rather than mocking
+    // Date.now()/setTimeout through the full ensureBrowser call graph.
+    const HF_LOCK = join(HF_CACHE, ".install.lock");
+    const paths = installFsMocks({ existing: new Set([HF_CACHE, HF_LOCK]) });
+
+    const { withInstallLock } = await import("./manager.js");
+    const result = await withInstallLock(async () => "done", 10, 5);
+
+    expect(result).toBe("done");
+    expect(paths.has(HF_LOCK)).toBe(false);
   });
 
   it("warns and falls through when the hyperframes cache cannot be read", async () => {
