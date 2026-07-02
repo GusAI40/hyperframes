@@ -72,6 +72,16 @@ type SlideshowMediaElement = HTMLMediaElement & {
   dataset: DOMStringMap;
 };
 
+/** True when the keydown originated in a text-entry control (typing must never
+ *  navigate the deck). Duck-typed so it works for events from the composition
+ *  iframe's realm, where instanceof this realm's element classes always fails. */
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!target || typeof (target as HTMLElement).tagName !== "string") return false;
+  const el = target as HTMLElement;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable === true;
+}
+
 function isPlayerElement(el: HTMLElement): el is PlayerElement {
   return (
     typeof (el as PlayerElement).seek === "function" &&
@@ -178,6 +188,8 @@ export class HyperframesSlideshow extends HTMLElement {
   private initTimer: ReturnType<typeof setTimeout> | null = null;
   private initInFlight = false;
   private initGeneration = 0;
+  private keyForwardFrame: HTMLIFrameElement | null = null;
+  private detachIframeKeys: (() => void) | null = null;
   private _muted = false;
   private mediaWireInterval: ReturnType<typeof setInterval> | null = null;
   private playerObserver: MutationObserver | null = null;
@@ -223,9 +235,8 @@ export class HyperframesSlideshow extends HTMLElement {
     this.initInFlight = false;
     this.initGeneration += 1;
     this.tabIndex = 0;
-    // note: if the inner player iframe has keyboard focus, window keydown in the
-    // top document won't fire — that edge remains; this listener fixes the dominant
-    // case where the page loads and arrows should work without clicking the element.
+    // Keydowns with focus inside the player iframe don't reach this window
+    // listener — attachIframeKeyForwarding() (wired in init) covers that path.
     window.addEventListener("keydown", this.onKey);
     this.addEventListener("touchstart", this.onTouchStart, { passive: true });
     this.addEventListener("touchend", this.onTouchEnd);
@@ -259,6 +270,7 @@ export class HyperframesSlideshow extends HTMLElement {
       this.initTimer = null;
     }
     window.removeEventListener("keydown", this.onKey);
+    this.detachIframeKeys?.();
     this.removeEventListener("touchstart", this.onTouchStart);
     this.removeEventListener("touchend", this.onTouchEnd);
     window.removeEventListener("message", this.onMessage);
@@ -397,6 +409,8 @@ export class HyperframesSlideshow extends HTMLElement {
 
       // Guard: if a disconnect or reconnect happened while waiting, bail out.
       if (gen !== this.initGeneration) return;
+
+      this.attachIframeKeyForwarding(playerEl);
 
       // Wait for scenes to be populated (the runtime "timeline" postMessage
       // arrives ~1000ms after waitForReady resolves). Graceful fallback to []
@@ -564,6 +578,42 @@ export class HyperframesSlideshow extends HTMLElement {
     if (this.playerObserver !== null) return;
     this.playerObserver = new MutationObserver(() => this.ensureInteractivePlayers());
     this.playerObserver.observe(this, { childList: true, subtree: true });
+  }
+
+  /**
+   * Forward keydown events from the composition iframe to onKey. Interactive
+   * decks move focus into the iframe when the presenter clicks a slide, and
+   * top-window keydown stops firing — without this, arrow keys stop controlling
+   * the deck after any in-slide click. Same-origin frames only (cross-origin
+   * access throws → degrade silently). Re-attached on every iframe `load`,
+   * because a navigation clears listeners the parent added to the content
+   * window.
+   */
+  private attachIframeKeyForwarding(player: Partial<PlayerElement> & HTMLElement): void {
+    const frame = player.iframeElement;
+    if (!(frame instanceof HTMLIFrameElement) || frame === this.keyForwardFrame) return;
+    this.detachIframeKeys?.();
+    const attach = (): void => {
+      try {
+        // addEventListener dedupes same handler+target, so re-runs are safe.
+        frame.contentWindow?.addEventListener("keydown", this.onKey);
+      } catch {
+        // Cross-origin composition — keyboard forwarding unavailable.
+      }
+    };
+    attach();
+    frame.addEventListener("load", attach);
+    this.keyForwardFrame = frame;
+    this.detachIframeKeys = (): void => {
+      frame.removeEventListener("load", attach);
+      try {
+        frame.contentWindow?.removeEventListener("keydown", this.onKey);
+      } catch {
+        // Frame already gone or cross-origin — nothing to detach.
+      }
+      this.keyForwardFrame = null;
+      this.detachIframeKeys = null;
+    };
   }
 
   private playerFrameDocument(player: Partial<PlayerElement> & HTMLElement): Document | null {
@@ -751,16 +801,14 @@ export class HyperframesSlideshow extends HTMLElement {
 
   // fallow-ignore-next-line complexity
   private onKey = (e: KeyboardEvent): void => {
-    const target = e.target;
-    if (
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target instanceof HTMLSelectElement ||
-      (target instanceof HTMLElement && target.isContentEditable)
-    ) {
-      return;
-    }
+    // Duck-typed (not instanceof): this handler also receives keydowns forwarded
+    // from the composition iframe, whose elements are instances of the IFRAME
+    // realm's classes — instanceof against this realm's would never match.
+    if (isTextEntryTarget(e.target)) return;
     const active = document.activeElement;
+    // With focus inside the composition iframe, the top document's activeElement
+    // is the <iframe> itself — contained by this element, so `focused` stays true
+    // and arrows keep driving the deck after the presenter clicks into the slide.
     const focused = active === this || this.contains(active);
     // Arrows act even when nothing is focused (active === body/null) so a freshly
     // loaded deck responds without a click; Space/Backspace have strong page-level

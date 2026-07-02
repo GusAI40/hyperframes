@@ -1034,6 +1034,47 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     el.remove();
   });
 
+  it("arrow keydown inside the composition iframe still drives the deck", () => {
+    // Interactive decks move focus into the player iframe on click; keydowns
+    // there never reach the top window's listener. The component forwards them.
+    const el = document.createElement("hyperframes-slideshow") as any;
+    document.body.appendChild(el);
+    const iframe = document.createElement("iframe");
+    el.appendChild(iframe);
+    let nexts = 0;
+    el.__setControllerForTest({
+      next: () => {
+        nexts++;
+      },
+      prev: () => {},
+      goToSlide: () => {},
+      onChange: () => () => {},
+      counter: { index: 1, total: 3 },
+      breadcrumb: [{ id: "main", label: "Main deck" }],
+      currentSlide: { hotspots: [] },
+      nextSlide: null,
+      get position() {
+        return MAIN_POS;
+      },
+    });
+
+    el.attachIframeKeyForwarding({ iframeElement: iframe });
+    iframe.contentWindow?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+    expect(nexts).toBe(1);
+
+    // Text-entry targets inside the iframe must NOT navigate (duck-typed guard —
+    // iframe-realm elements are not instanceof this realm's classes).
+    const doc = iframe.contentDocument;
+    if (doc) {
+      const input = doc.createElement("input");
+      doc.body.appendChild(input);
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(nexts).toBe(1);
+    }
+
+    el.remove();
+  });
+
   it("present() rebroadcasts the current position for a newly opened audience tab", async () => {
     const received: unknown[] = [];
     const spy = new BroadcastChannel(slideshowChannelName());
