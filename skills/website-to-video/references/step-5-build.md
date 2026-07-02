@@ -287,9 +287,9 @@ The Studio preview server rewrites base URLs to the project root — `../` paths
 
 **Before dispatching, re-read DESIGN.md and STORYBOARD.md.** You wrote these files earlier in the session and you think you remember them. You don't — not the exact hex values, not the specific font families, not the button border-radius, not the Do's/Don'ts. Re-read them now so you can paste accurate brand rules and beat specs into each sub-agent prompt.
 
-**If your runtime supports parallel sub-agents** (Claude Code, Cursor, most agent frameworks): dispatch one sub-agent per beat — 3 to 4× faster than building sequentially. For 3+ beats, always dispatch in parallel. For 1–2 beats, sequential is fine.
+**If your runtime supports parallel sub-agents/workers**: dispatch one worker per beat — 3 to 4× faster than building sequentially. For 3+ beats, always dispatch in parallel. For 1–2 beats, sequential is fine.
 
-**If your runtime does not support parallel sub-agents** (some Codex setups, serial-only models): build sequentially using the same context-packing template below. The template gives each build pass the same context a sub-agent would get — paste prev/this/next beat + brand values — so output quality is the same, just slower.
+**If your runtime does not support parallel sub-agents/workers**: build sequentially using the same context-packing template below. The template gives each build pass the same context a worker would get — paste prev/this/next beat + brand values — so output quality is the same, just slower.
 
 In either case, use the template. Do not skip it and build from memory.
 

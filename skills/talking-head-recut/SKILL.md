@@ -275,13 +275,11 @@ densityMultiplier)))`) so the "auto" option's label can show the
 Not every runtime exposes the same structured-question tool. Apply this
 order:
 
-1. **`AskUserQuestion`** (Claude Code, Anthropic Console) — use the
-   structured 4-question call below.
-2. **Other native clarification tool** (e.g. `ask_question`,
-   `request_user_input`, IDE-specific prompt) — use that tool with the
+1. **Native structured clarification tool** (for example, a runtime-provided
+   question/prompt UI) — use that tool with the
    same 4 question texts and option lists. Preserve the recommendation
    markers and the precomputed values.
-3. **No native tool** (Codex CLI, plain text-only runtimes) — **ask
+2. **No native tool** (plain text-only runtimes) — **ask
    directly in normal conversation**. Use the plain-text template at the
    end of this section. Keep it to **one message, 4 numbered questions**
    (the global cap is 2–5 questions per round; we stay inside it).
@@ -299,68 +297,18 @@ Rules that apply to every channel:
   the most neutral group (editorial/data), `autoCount`. Tell the user
   what you picked in one sentence and continue.
 
-**Channel A — native `AskUserQuestion`:**
+**Channel A — native structured question tool:**
 
-```
-// Precompute before the call:
-//   recommendedRatio = "16:9" | "9:16" | "4:5"
-//   autoCount        = integer (from Step 6)
+Precompute `recommendedRatio` (`16:9`, `9:16`, or `4:5`) and `autoCount` (integer from Step 6). Use the runtime's structured question mechanism with these four single-select questions. Put the recommended option first, and append `(recommended · matches source video W×H)` to the recommended aspect-ratio label.
 
-AskUserQuestion({
-  questions: [
-    {
-      question: "Output video aspect ratio (canvas):",
-      header: "Aspect ratio",
-      multiSelect: false,
-      // Reorder so the recommended option appears FIRST (per AskUserQuestion convention).
-      // Append " (recommended · matches source video W×H)" to the recommended option's label.
-      options: [
-        { label: "16:9 (1920×1080) landscape", description: "TV / YouTube / desktop playback. Most natural when the source video is already landscape; widest canvas." },
-        { label: "9:16 (1080×1920) portrait", description: "TikTok / Reels / short-form mobile. Most natural for portrait source; native mobile experience." },
-        { label: "4:5 (1080×1350) near-portrait", description: "Instagram feed / WeChat Moments. Best when source is near-square or you want to cover both platforms." }
-      ]
-    },
-    {
-      question: "Choose the overall layout: how should the video and cards coexist on the canvas?",
-      header: "Layout",
-      multiSelect: false,
-      options: [
-        { label: "side-by-side (split)",  description: "Video and card each take half the canvas. Most stable for interview / data side-by-side; clear visual separation." },
-        { label: "top-bottom (stack)",    description: "Video on top (~52%), card below. Classic combo of speaker face + summary card; works well in portrait too." },
-        { label: "picture-in-picture (pip)", description: "Card fills the canvas, video shrinks to a rounded corner window. Use when content is primary and speaker is secondary." },
-        { label: "full-screen overlay (overlay)", description: "Video plays full-bleed, card floats as a glass layer on top. Strong cinematic / emotional feel." }
-      ]
-    },
-    {
-      question: "Choose the card visual style (style):",
-      header: "Style group",
-      multiSelect: false,
-      // NOTE: these 3 groups intentionally match the frame auto-pick matrix
-      // rows below, so picking a group resolves both `style` group AND the
-      // frame matrix column in one step. Memberships are mutually exclusive.
-      options: [
-        { label: "warm paper (warm-paper)", description: "academic notebook · editorial big-type · whiteboard hand-drawn · xhs social. Best for interview reflections, product launches, lifestyle, emotional stories." },
-        { label: "clinical / cold (clinical)",   description: "audit magazine · swiss grid · terminal CLI · minimal modern. Best for financial analysis, investigative reports, technical tutorials, serious presentations." },
-        { label: "experimental / avant-garde (experimental)", description: "geom color-clash geometry · spotlight dark-background. Best for short-form highlights, product launches, strong emotion, cinematic feel." }
-      ]
-    },
-    {
-      question: "Card count (takeaway pacing): how many cards to cut?",
-      header: "Card count",
-      multiSelect: false,
-      options: [
-        { label: "Auto (recommended) · approx N cards", description: "Inferred automatically from video duration and information density (see Step 6 rules). This run estimates approx N cards. Substitute the real N (your autoCount) into the label." },
-        { label: "Fewer · approx round(N × 0.6) cards", description: "Sparser cuts, each card holds longer — suits reflective / slow-paced content." },
-        { label: "More · approx round(N × 1.5) cards", description: "Tighter cuts, faster rhythm — suits staccato / data-dense / short-form highlight content." }
-      ]
-    }
-  ]
-})
-```
+1. **Output video aspect ratio (canvas):** `16:9 (1920×1080) landscape`, `9:16 (1080×1920) portrait`, `4:5 (1080×1350) near-portrait`.
+2. **Overall layout:** `side-by-side (split)`, `top-bottom (stack)`, `picture-in-picture (pip)`, `full-screen overlay (overlay)`.
+3. **Card visual style group:** `warm paper (warm-paper)`, `clinical / cold (clinical)`, `experimental / avant-garde (experimental)`.
+4. **Card count:** `Auto (recommended) · approx N cards`, `Fewer · approx round(N × 0.6) cards`, `More · approx round(N × 1.5) cards`, substituting the real `autoCount` for `N`.
 
-**About "Other"** — `AskUserQuestion` automatically adds an "Other" option to the card count question. The user can type a number directly (e.g. "8", "20") as the cardCount target. Parse the input as an integer: if parsing succeeds → use that value (minimum 5 as a floor); if parsing fails → fall back to "auto".
+If the native tool supports an "Other" option for card count, the user can type a number directly (e.g. "8", "20"). Parse the input as an integer: if parsing succeeds → use that value (minimum 5 as a floor); if parsing fails → fall back to "auto".
 
-**Channel B — plain-text fallback** (Codex CLI, runtimes without a
+**Channel B — plain-text fallback** (runtimes without a
 native question tool). Post this as one normal message, then wait for
 the reply. Bullet-style 1/2/3/4 keeps the reply parseable:
 
@@ -425,8 +373,8 @@ After the user answers (any channel):
 2. **Map the style group to a specific style** by looking at the
    transcript tone — pick the one that best fits, but stay inside the
    user's chosen group. If you're unsure between two specific styles
-   inside the group, send a second `AskUserQuestion` with those 2–4
-   specific style options.
+   inside the group, ask a second structured or plain-text question with
+   those 2–4 specific style options.
 
 3. **Resolve final cardCount** from the density answer:
 
