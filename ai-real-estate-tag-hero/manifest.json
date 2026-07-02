@@ -1,0 +1,30 @@
+{
+  "title": "AI for Real Estate by TAG Hero",
+  "duration": 15,
+  "narrationDuration": 10.762438,
+  "formats": [
+    {
+      "slug": "landscape-16x9",
+      "width": 1920,
+      "height": 1080,
+      "type": "landscape"
+    },
+    {
+      "slug": "portrait-9x16",
+      "width": 1080,
+      "height": 1920,
+      "type": "portrait"
+    },
+    {
+      "slug": "square-1x1",
+      "width": 1080,
+      "height": 1080,
+      "type": "square"
+    }
+  ],
+  "files": [
+    "landscape-16x9/renders/landscape-16x9.mp4",
+    "portrait-9x16/renders/portrait-9x16.mp4",
+    "square-1x1/renders/square-1x1.mp4"
+  ]
+}

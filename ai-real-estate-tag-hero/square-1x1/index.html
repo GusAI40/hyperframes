@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI for Real Estate by TAG Hero - square-1x1</title>
+    <style>
+
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #030611; }
+      #main-composition {
+        position: relative;
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        color: #F6F0E3;
+        font-family: Arial, sans-serif;
+        background:
+          radial-gradient(circle at 74% 28%, rgba(50,216,255,0.22), rgba(3,6,17,0) 31%),
+          radial-gradient(circle at 18% 74%, rgba(214,181,109,0.24), rgba(3,6,17,0) 38%),
+          #030611;
+      }
+      #main-composition::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(90deg, rgba(246,240,227,0.035) 1px, rgba(3,6,17,0) 1px),
+          linear-gradient(180deg, rgba(246,240,227,0.028) 1px, rgba(3,6,17,0) 1px);
+        background-size: 82px 82px;
+        opacity: 0.38;
+      }
+      #main-composition::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, rgba(3,6,17,0.78), rgba(3,6,17,0.12) 43%, rgba(3,6,17,0.70)),
+          radial-gradient(circle at 50% 120%, rgba(242,200,121,0.15), rgba(3,6,17,0) 48%);
+        pointer-events: none;
+      }
+      .brand-rail {
+        position: absolute;
+        z-index: 20;
+        left: 64px;
+        right: 64px;
+        top: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-family: "JetBrains Mono", Consolas, monospace;
+        font-size: 16px;
+        letter-spacing: 0.11em;
+        color: #BAC6D8;
+        text-transform: uppercase;
+      }
+      .brand-rail strong {
+        color: #F6F0E3;
+        font-weight: 800;
+      }
+      .brand-rail span:last-child {
+        color: #D6B56D;
+        border: 1px solid rgba(214,181,109,0.45);
+        padding: 10px 14px;
+        background: rgba(8,18,31,0.58);
+      }
+      .scene {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background-color: #030611;
+      }
+      .scene-light {
+        position: absolute;
+        inset: -15%;
+        opacity: 0.85;
+        background:
+          radial-gradient(circle at 70% 38%, rgba(50,216,255,0.20), rgba(3,6,17,0) 34%),
+          radial-gradient(circle at 34% 64%, rgba(242,200,121,0.17), rgba(3,6,17,0) 36%);
+        filter: blur(1px);
+      }
+      .scene-content {
+        position: relative;
+        z-index: 4;
+        width: 100%;
+        height: 100%;
+        padding: 78px 58px 122px;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 34px;
+      }
+      .copy-block {
+        width: 100%;
+        flex: 1 1 0;
+        max-width: 500px;
+      }
+      .eyebrow {
+        margin: 0 0 20px;
+        font-family: "JetBrains Mono", Consolas, monospace;
+        font-size: 17px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #D6B56D;
+        font-weight: 800;
+      }
+      h1 {
+        margin: 0;
+        max-width: 780px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 65px;
+        line-height: 0.92;
+        font-weight: 520;
+        letter-spacing: 0.01em;
+        color: #F6F0E3;
+        text-wrap: balance;
+      }
+      .body-copy {
+        margin: 26px 0 0;
+        max-width: 650px;
+        color: #D7DFEC;
+        font-size: 23px;
+        line-height: 1.28;
+        font-weight: 450;
+      }
+      .visual-block {
+        position: relative;
+        width: 100%;
+        flex: 1 1 0;
+        min-height: 440px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .designed-caption {
+        position: absolute;
+        z-index: 12;
+        left: 72px;
+        right: 72px;
+        bottom: 40px;
+        padding: 14px 22px;
+        border-top: 1px solid rgba(214,181,109,0.34);
+        color: #F6F0E3;
+        background: linear-gradient(90deg, rgba(8,18,31,0.18), rgba(8,18,31,0.72), rgba(8,18,31,0.18));
+        font-size: 18px;
+        line-height: 1.22;
+        text-align: center;
+      }
+      .luxe-transition {
+        position: absolute;
+        z-index: 50;
+        inset: -120px;
+        opacity: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 48% 50%, rgba(246,240,227,0.34), rgba(50,216,255,0.22) 22%, rgba(3,6,17,0) 58%),
+          linear-gradient(108deg, rgba(3,6,17,0), rgba(242,200,121,0.34), rgba(3,6,17,0));
+        filter: blur(24px);
+      }
+      .estate-frame {
+        position: relative;
+        width: 560px;
+        height: 460px;
+        perspective: 1000px;
+      }
+      .estate-skyline {
+        position: absolute;
+        inset: 0;
+        border: 1px solid rgba(246,240,227,0.10);
+        background:
+          linear-gradient(180deg, rgba(50,216,255,0.06), rgba(3,6,17,0.12)),
+          radial-gradient(circle at 62% 64%, rgba(242,200,121,0.24), rgba(3,6,17,0) 42%);
+        box-shadow: inset 0 0 120px rgba(50,216,255,0.07), 0 40px 130px rgba(0,0,0,0.45);
+      }
+      .estate-house {
+        position: absolute;
+        left: 8%;
+        right: 8%;
+        bottom: 14%;
+        height: 58%;
+        transform: rotateX(2deg) rotateY(-8deg);
+      }
+      .roof,
+      .wall,
+      .window,
+      .terrace {
+        position: absolute;
+        display: block;
+      }
+      .roof {
+        height: 2px;
+        background: rgba(246,240,227,0.62);
+        box-shadow: 0 0 18px rgba(246,240,227,0.30);
+        transform-origin: left center;
+      }
+      .roof-a { left: 3%; top: 12%; width: 72%; transform: rotate(-10deg); }
+      .roof-b { right: 4%; top: 18%; width: 42%; transform: rotate(12deg); }
+      .wall {
+        border: 1px solid rgba(246,240,227,0.17);
+        background: rgba(8,18,31,0.42);
+        backdrop-filter: blur(10px);
+      }
+      .wall-a { left: 7%; top: 28%; width: 52%; height: 54%; }
+      .wall-b { right: 8%; top: 34%; width: 36%; height: 45%; }
+      .window {
+        background: rgba(242,200,121,0.38);
+        box-shadow: 0 0 28px rgba(242,200,121,0.28);
+        border: 1px solid rgba(242,200,121,0.28);
+      }
+      .w1 { left: 13%; top: 39%; width: 13%; height: 20%; }
+      .w2 { left: 31%; top: 39%; width: 13%; height: 20%; }
+      .w3 { right: 27%; top: 45%; width: 12%; height: 18%; }
+      .w4 { right: 12%; top: 45%; width: 10%; height: 18%; }
+      .terrace {
+        left: 3%;
+        right: 3%;
+        bottom: 6%;
+        height: 2px;
+        background: #32D8FF;
+        box-shadow: 0 0 30px rgba(50,216,255,0.55);
+      }
+      .ai-thread {
+        position: absolute;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(50,216,255,0), rgba(50,216,255,0.85), rgba(214,181,109,0));
+        filter: drop-shadow(0 0 10px rgba(50,216,255,0.75));
+      }
+      .thread-a { left: 0; right: 10%; top: 22%; transform: rotate(-6deg); }
+      .thread-b { left: 18%; right: 0; bottom: 23%; transform: rotate(5deg); }
+      .artifact-stage,
+      .dashboard-shell,
+      .proof-stack {
+        position: relative;
+        width: 560px;
+        height: 460px;
+      }
+      .artifact {
+        position: absolute;
+        width: 260px;
+        padding: 22px;
+        border: 1px solid rgba(246,240,227,0.14);
+        background: rgba(8,18,31,0.72);
+        backdrop-filter: blur(16px);
+        box-shadow: 0 30px 90px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+      }
+      .artifact em,
+      .proof-card span,
+      .dash-top,
+      .artifact span {
+        font-family: "JetBrains Mono", Consolas, monospace;
+        font-style: normal;
+        color: #9FB0C7;
+        font-size: 15px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .artifact strong {
+        display: block;
+        margin: 12px 0 10px;
+        font-family: Georgia, "Times New Roman", serif;
+        color: #F6F0E3;
+        font-size: 28px;
+        font-weight: 520;
+      }
+      .listing-card { left: 0; top: 4%; }
+      .video-card { right: 0; top: 4%; }
+      .mailer-card { left: 0; bottom: 4%; }
+      .web-card { right: 0; bottom: 4%; }
+      .dashboard-shell {
+        border: 1px solid rgba(246,240,227,0.14);
+        background: rgba(8,18,31,0.66);
+        backdrop-filter: blur(18px);
+        padding: 30px;
+        box-shadow: 0 40px 110px rgba(0,0,0,0.44), inset 0 0 90px rgba(50,216,255,0.05);
+      }
+      .dash-top {
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px solid rgba(246,240,227,0.12);
+        padding-bottom: 20px;
+        color: #D6B56D;
+      }
+      .dash-top em { color: #6EE7B7; font-style: normal; }
+      .dash-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 18px;
+        margin-top: 28px;
+      }
+      .dash-grid div {
+        min-height: 118px;
+        border: 1px solid rgba(50,216,255,0.18);
+        padding: 20px;
+        background: rgba(3,6,17,0.42);
+      }
+      .dash-grid strong {
+        display: block;
+        color: #F6F0E3;
+        font-size: 21px;
+        margin-bottom: 12px;
+      }
+      .dash-grid span {
+        color: #BAC6D8;
+        font-size: 18px;
+      }
+      .pulse-node {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #32D8FF;
+        box-shadow: 0 0 26px rgba(50,216,255,0.85);
+      }
+      .node-a { right: 16%; top: 22%; }
+      .node-b { left: 18%; bottom: 18%; background: #D6B56D; box-shadow: 0 0 26px rgba(214,181,109,0.85); }
+      .proof-card {
+        position: absolute;
+        border: 1px solid rgba(246,240,227,0.14);
+        background: rgba(8,18,31,0.72);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 35px 100px rgba(0,0,0,0.42);
+      }
+      .proof-main {
+        left: 50%;
+        top: 50%;
+        width: 320px;
+        height: 190px;
+        transform: translate(-50%, -50%);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 14px;
+        text-align: center;
+      }
+      .proof-main strong {
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 48px;
+        color: #D6B56D;
+        font-weight: 560;
+      }
+      .proof-left,
+      .proof-right {
+        padding: 20px 22px;
+        width: 235px;
+      }
+      .proof-left { left: 0; top: 2%; }
+      .proof-right { right: 0; bottom: 2%; }
+      .proof-left em,
+      .proof-right em {
+        color: #F6F0E3;
+        font-style: normal;
+        font-size: 21px;
+      }
+      .proof-left span,
+      .proof-right span {
+        display: block;
+        margin-top: 8px;
+      }
+      .tag-seal {
+        position: absolute;
+        right: 8%;
+        top: 8%;
+        width: 118px;
+        height: 118px;
+        border-radius: 50%;
+        border: 1px solid rgba(214,181,109,0.54);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #D6B56D;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 40px;
+        box-shadow: 0 0 80px rgba(214,181,109,0.16);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="main-composition" data-composition-id="main" data-start="0" data-duration="15" data-width="1080" data-height="1080">
+      <div class="brand-rail">
+        <strong>AI for Real Estate by TAG</strong>
+        <span>Hero Loop</span>
+      </div>
+      
+      <section id="scene-1" class="clip scene scene-estate" data-start="0.00" data-duration="3.75" data-track-index="1" data-layout-allow-overlap>
+        <div class="scene-light" data-layout-ignore></div>
+        <div class="scene-content square">
+          <div class="copy-block">
+            <p class="eyebrow">AI for Real Estate by TAG</p>
+            <h1>Where AI agents meet real estate agents.</h1>
+            <p class="body-copy">Premium systems for the modern agent.</p>
+          </div>
+          <div class="visual-block">
+      <div class="estate-frame">
+        <div class="estate-skyline" data-layout-ignore></div>
+        <div class="estate-house">
+          <span class="roof roof-a"></span>
+          <span class="roof roof-b"></span>
+          <span class="wall wall-a"></span>
+          <span class="wall wall-b"></span>
+          <span class="window w1"></span>
+          <span class="window w2"></span>
+          <span class="window w3"></span>
+          <span class="window w4"></span>
+          <span class="terrace"></span>
+        </div>
+        <div class="ai-thread thread-a" data-layout-ignore></div>
+        <div class="ai-thread thread-b" data-layout-ignore></div>
+      </div></div>
+        </div>
+        <div class="designed-caption">AI for Real Estate by TAG. Where AI agents meet real estate agents.</div>
+      </section>
+
+      <section id="scene-2" class="clip scene scene-campaigns" data-start="3.75" data-duration="3.75" data-track-index="2" data-layout-allow-overlap>
+        <div class="scene-light" data-layout-ignore></div>
+        <div class="scene-content square">
+          <div class="copy-block">
+            <p class="eyebrow">Listing Engine</p>
+            <h1>Listings become campaigns.</h1>
+            <p class="body-copy">Launch-ready videos, mailers, pages, posts, and follow-up.</p>
+          </div>
+          <div class="visual-block">
+      <div class="artifact-stage">
+        <div class="artifact listing-card"><em>LISTING</em><strong>Active Campaign</strong><span>photos - copy - video</span></div>
+        <div class="artifact video-card"><em>VIDEO</em><strong>Story Cut</strong><span>hero + reels + posts</span></div>
+        <div class="artifact mailer-card"><em>MAILER</em><strong>Seller Reach</strong><span>print + QR + follow-up</span></div>
+        <div class="artifact web-card"><em>WEB</em><strong>Lead Hub</strong><span>landing page live</span></div>
+      </div></div>
+        </div>
+        <div class="designed-caption">Listings become campaigns. Websites become lead hubs.</div>
+      </section>
+
+      <section id="scene-3" class="clip scene scene-hub" data-start="7.50" data-duration="3.75" data-track-index="3" data-layout-allow-overlap>
+        <div class="scene-light" data-layout-ignore></div>
+        <div class="scene-content square">
+          <div class="copy-block">
+            <p class="eyebrow">Lead Hub</p>
+            <h1>Websites become intelligent lead hubs.</h1>
+            <p class="body-copy">Maya concierge, forms, reporting, and instant client workflows.</p>
+          </div>
+          <div class="visual-block">
+      <div class="dashboard-shell">
+        <div class="dash-top"><span>MAYA CONCIERGE</span><em>LIVE</em></div>
+        <div class="dash-grid">
+          <div><strong>Lead Capture</strong><span>Open house inquiry</span></div>
+          <div><strong>Follow-Up</strong><span>Seller sequence ready</span></div>
+          <div><strong>Report</strong><span>Campaign signal found</span></div>
+          <div><strong>Next Step</strong><span>Agent review queue</span></div>
+        </div>
+        <div class="pulse-node node-a"></div>
+        <div class="pulse-node node-b"></div>
+      </div></div>
+        </div>
+        <div class="designed-caption">Maya turns every touchpoint into a smarter next step.</div>
+      </section>
+
+      <section id="scene-4" class="clip scene scene-proof" data-start="11.25" data-duration="3.75" data-track-index="4" data-layout-allow-overlap>
+        <div class="scene-light" data-layout-ignore></div>
+        <div class="scene-content square">
+          <div class="copy-block">
+            <p class="eyebrow">Maya Workflow Suite</p>
+            <h1>Open houses become future seller opportunities.</h1>
+            <p class="body-copy">Showing Planner. CMA Generator. Follow-up systems. Built to be reviewed, refined, and sent.</p>
+          </div>
+          <div class="visual-block">
+      <div class="proof-stack">
+        <div class="proof-card proof-main">
+          <span>AI AGENTS</span>
+          <strong>Meet</strong>
+          <span>REAL ESTATE AGENTS</span>
+        </div>
+        <div class="proof-card proof-left"><em>Maya Showing Planner</em><span>buyer tour package</span></div>
+        <div class="proof-card proof-right"><em>Maya CMA Generator</em><span>seller market report</span></div>
+        <div class="tag-seal">TAG</div>
+      </div></div>
+        </div>
+        <div class="designed-caption">Send Maya an address. Get a premium real estate deliverable back.</div>
+      </section>
+      <div class="luxe-transition" data-layout-ignore></div>
+      <audio id="narration" class="clip" src="assets/narration.mp3" data-start="0" data-duration="10.76" data-track-index="10" data-volume="0.92"></audio>
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+        var sceneDuration = 3.75;
+        function fromTo(selector, fromVars, toVars, at) {
+          var targets = document.querySelectorAll(selector);
+          if (targets.length) tl.fromTo(targets, fromVars, toVars, at);
+        }
+        function to(selector, vars, at) {
+          var targets = document.querySelectorAll(selector);
+          if (targets.length) tl.to(targets, vars, at);
+        }
+        fromTo(".brand-rail", { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: 0.68, ease: "power3.out" }, 0.18);
+        for (var i = 1; i <= 4; i++) {
+          var start = (i - 1) * sceneDuration;
+          var scene = "#scene-" + i;
+          fromTo(scene + " .scene-light", { opacity: 0, scale: 1.08, x: -60 }, { opacity: 0.9, scale: 1, x: 0, duration: 1.25, ease: "sine.out" }, start + 0.05);
+          fromTo(scene + " .eyebrow", { opacity: 0, x: -36, letterSpacing: "0.22em" }, { opacity: 1, x: 0, letterSpacing: "0.12em", duration: 0.58, ease: "power3.out" }, start + 0.14);
+          fromTo(scene + " h1", { opacity: 0, y: 58, filter: "blur(16px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.92, ease: "expo.out" }, start + 0.24);
+          fromTo(scene + " .body-copy", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.54, ease: "power2.out" }, start + 0.74);
+          fromTo(scene + " .visual-block > *", { opacity: 0, scale: 0.95, y: 38, rotation: -0.5 }, { opacity: 1, scale: 1, y: 0, rotation: 0, duration: 0.94, ease: "power4.out", stagger: 0.07 }, start + 0.34);
+          fromTo(scene + " .designed-caption", { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.50, ease: "power2.out" }, start + 1.08);
+          fromTo(scene + " .artifact, " + scene + " .dash-grid div, " + scene + " .proof-card, " + scene + " .window", { opacity: 0, y: 22, scale: 0.97 }, { opacity: 1, y: 0, scale: 1, duration: 0.48, ease: "back.out(1.08)", stagger: 0.08 }, start + 0.72);
+          fromTo(scene + " .ai-thread, " + scene + " .terrace", { opacity: 0, scaleX: 0, transformOrigin: "left center" }, { opacity: 1, scaleX: 1, duration: 0.72, ease: "power2.inOut", stagger: 0.11 }, start + 0.84);
+          fromTo(scene + " .estate-house, " + scene + " .dashboard-shell, " + scene + " .proof-stack", { x: 24, y: 8 }, { x: 0, y: 0, duration: 2.5, ease: "sine.inOut" }, start + 0.52);
+        }
+        [3.75,7.50,11.25].forEach(function(time) {
+          fromTo(".luxe-transition", { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1.04, duration: 0.30, ease: "power1.inOut", overwrite: "auto" }, time - 0.34);
+          to(".luxe-transition", { opacity: 0, scale: 1.16, duration: 0.44, ease: "sine.inOut", overwrite: "auto" }, time - 0.04);
+        });
+        to("#main-composition", { opacity: 0.98, duration: 0.2, ease: "sine.inOut" }, 14.78);
+        window.__timelines["main"] = tl;
+      </script>
+    </div>
+  </body>
+</html>
