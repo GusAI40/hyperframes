@@ -1313,6 +1313,17 @@ async function runTestSuite(
 
     return result;
   } finally {
+    // A suite that ran and failed must fail the whole run, even if the
+    // process never reaches the end-of-run summary (e.g. the event loop
+    // drains while other parallel suites are still pending, in which case
+    // Node exits with the current exitCode — 0 unless set here). Setting
+    // the exit code at the moment the failure is known makes it sticky:
+    // nothing later resets it to 0. Skipped suites report `passed: true`
+    // (skipping is a clean outcome), so skips never trip this.
+    if (!result.passed) {
+      process.exitCode = 1;
+    }
+
     // Save failure details before cleanup
     if (!result.passed && !options.update) {
       try {
@@ -1343,6 +1354,32 @@ async function runTestSuite(
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Set to `true` only after {@link run} has printed its end-of-run summary
+ * (or the `--update` snapshot report). The `beforeExit` guard below uses it
+ * to distinguish a normal exit from a premature event-loop drain: if a
+ * pending promise inside a render is abandoned (every backing handle
+ * closed) while `Promise.allSettled` is still waiting on it, Node exits
+ * with the current `process.exitCode` — which would be 0 unless a suite
+ * already failed. An incomplete run must never report success.
+ */
+let runCompleted = false;
+
+process.on("beforeExit", () => {
+  if (runCompleted) return;
+  if (process.exitCode === undefined || process.exitCode === 0) {
+    console.error(
+      JSON.stringify({
+        event: "test_suite_incomplete",
+        message:
+          "Event loop drained before all test suites completed; failing the run. " +
+          "One or more renders likely abandoned a pending promise.",
+      }),
+    );
+    process.exitCode = 1;
+  }
+});
 
 async function run(): Promise<void> {
   const options = parseArgs(process.argv);
@@ -1484,6 +1521,8 @@ async function run(): Promise<void> {
       process.exitCode = 1;
     }
   }
+
+  runCompleted = true;
 }
 
 void run().catch((error) => {
