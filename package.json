@@ -44,7 +44,6 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@hyperframes/player": "workspace:*",
     "@types/node": "^25.0.10",
-    "concurrently": "^8.2.0",
     "fallow": "^2.75.0",
     "happy-dom": "^20.9.0",
     "knip": "^6.0.3",
@@ -65,5 +64,8 @@
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -4,7 +4,6 @@
  */
 export {
   extractMediaMetadata,
-  extractVideoMetadata,
   extractAudioMetadata,
   type VideoMetadata,
   type AudioMetadata,
