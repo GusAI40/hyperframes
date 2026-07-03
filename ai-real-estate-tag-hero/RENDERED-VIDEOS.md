@@ -41,3 +41,16 @@ This iteration reframes the product from a literal workflow explainer into a pre
 - Uses the existing Cartesia voice-over configuration from `.env`.
 - Does not use Michelle personal branding, brokerage logos, Coldwell Banker marks, or fake performance claims.
 - Uses layout-first compositions for each aspect ratio instead of cropping one master canvas.
+
+## Vercel Delivery Upgrade
+
+- `index.html` is now a complete static media kit with hero preview, direct download buttons, format specs, delivery notes, and post-ready copy.
+- `vercel.json` adds security headers and immutable cache headers for rendered MP4, JPG, and MP3 assets.
+- `robots.txt` and `site.webmanifest` are included for clean share/crawl behavior.
+- The design direction follows a preview-first Vercel handoff model: static when static is enough, cacheable media assets, clear provenance, and no unnecessary runtime.
+
+## Research Inputs
+
+- Vercel Ship 2026: Vercel Services, broader backend/framework support, enterprise apps and agents, and Vercel Agent.
+- Vercel Skills documentation and skills.sh: reusable agent capabilities, Vercel React/Next.js skills, deployment skills, workflow skills, and the skills.sh API.
+- Vercel Ship 2025: Fluid Compute, AI-oriented infrastructure, Sandbox, and preview-driven workflows.

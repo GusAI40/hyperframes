@@ -1,0 +1,9 @@
+{
+  "name": "AI for Real Estate by TAG",
+  "short_name": "TAG AI",
+  "description": "Preview and download the AI for Real Estate by TAG hero videos.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#05070c",
+  "theme_color": "#05070c"
+}
