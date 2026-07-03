@@ -289,7 +289,12 @@ Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.he
 | [`@hyperframes/studio`](packages/studio)                         | Browser-based composition editor UI                               |
 | [`@hyperframes/player`](packages/player)                         | Embeddable `<hyperframes-player>` web component                   |
 | [`@hyperframes/shader-transitions`](packages/shader-transitions) | WebGL shader transitions for compositions                         |
+| [`@hyperframes/studio-server`](packages/studio-server)           | HTTP API server backing the Studio editor                         |
+| [`@hyperframes/sdk`](packages/sdk)                               | Headless, framework-neutral composition editing engine            |
+| [`@hyperframes/lint`](packages/lint)                             | Composition linter powering `hyperframes lint`                    |
+| [`@hyperframes/parsers`](packages/parsers)                       | Composition, asset, and GSAP parsers shared across packages       |
 | [`@hyperframes/aws-lambda`](packages/aws-lambda)                 | AWS Lambda SDK and deployment surface for distributed renders     |
+| [`@hyperframes/gcp-cloud-run`](packages/gcp-cloud-run)           | Google Cloud Run + Workflows adapter for distributed rendering    |
 
 ## Community
 

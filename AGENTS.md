@@ -16,9 +16,11 @@ npx skills add heygen-com/hyperframes
 - `/website-to-video` — a **general** website / URL → a video _of_ the site (tour / showcase / social clip from captured screenshots + assets); for a product **launch / promo**, use `/product-launch-video`.
 - `/faceless-explainer` — arbitrary text, **no URL and no website capture** → faceless explainer, up to ~3 min (sweet spot ~30-90s); every visual is LLM-invented (typography / abstract graphics / diagram / data-viz).
 - `/embedded-captions` — an existing talking-head video (MP4) → the same footage with captions / subtitles added (verbatim rail + embedded climax, or pure-cinematic embed); the footage itself is untouched (no NLE-style editing).
-- `/talking-head-recut` — an existing talking-head / interview / podcast video (MP4) → the same footage packaged with designed **graphic overlays** (kinetic titles, lower-thirds, data callouts, pull-quotes, side panels, pip) synced to the transcript; the clip plays unchanged underneath, footage untouched. Replaces the removed `/footage-recut`. For plain captions/subtitles → `/embedded-captions`.
+- `/talking-head-recut` — an existing talking-head / interview / podcast video (MP4) → the same footage packaged with designed **graphic overlays** (kinetic titles, lower-thirds, data callouts, pull-quotes, side panels, pip) synced to the transcript; the clip plays unchanged underneath, footage untouched. For plain captions/subtitles → `/embedded-captions`.
 - `/pr-to-video` — a GitHub PR (URL / `owner/repo#N` / "this PR") → code-change explainer, up to ~3 min (changelog / feature reveal / fix / refactor). A PR link, not a product website.
 - `/motion-graphics` — a short (typically under 10s) design-led **motion graphic**, motion-is-the-message, no narration: kinetic type, a stat / number count-up, a chart, a logo sting, a lower-third / overlay, or an animated tweet / headline / captured-page highlight; rendered to MP4 or a transparent overlay. Longer / narrated / custom → `/general-video`.
+- `/music-to-video` — a **music track** (audio file, or video to pull audio from) → beat-synced video (lyric / slideshow / kinetic promo). Music drives pacing; user-supplied images / videos are cut onto the same beat grid.
+- `/slideshow` — a **presentation / pitch deck / interactive deck** — discrete slides, fragment reveals, branching, hotspot navigation, presenter mode. Output is a navigable deck, not a rendered video.
 - `/general-video` — fallback for any other video creation (title card, longer brand / sizzle reel, multi-scene montage, static loop, custom composition); the original hyperframes flow — design → plan → layout → build → validate, any length.
 
 **Porting an existing composition?** `/remotion-to-hyperframes` translates a Remotion (React) video composition into HyperFrames HTML — a source migration, separate from the creation workflows above.
@@ -58,13 +60,20 @@ Both must pass before previewing or considering work complete.
 
 ```
 packages/
+  aws-lambda/           → AWS Lambda adapter for distributed cloud rendering
   cli/                  → hyperframes CLI (create, preview, lint, render)
   core/                 → Types, parsers, generators, linter, runtime, frame adapters
   engine/               → Seekable page-to-video capture engine (Puppeteer + FFmpeg)
+  gcp-cloud-run/        → Google Cloud Run + Workflows adapter for distributed rendering
+  lint/                 → Composition linter powering `hyperframes lint`
+  parsers/              → Composition, asset, and GSAP parsers shared across packages
   player/               → Embeddable <hyperframes-player> web component
   producer/             → Full rendering pipeline (capture + encode + audio mix)
+  sdk/                  → Headless, framework-neutral composition editing engine
+  sdk-playground/       → Browser playground for the SDK (private, unpublished)
   shader-transitions/   → WebGL shader transitions for compositions
   studio/               → Browser-based composition editor UI
+  studio-server/        → HTTP API server backing the Studio editor
 registry/
   blocks/               → Installable sub-composition scenes (50+)
   components/           → Installable effects and snippets

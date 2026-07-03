@@ -87,13 +87,20 @@ Both must pass before previewing or considering work complete.
 
 ```
 packages/
+  aws-lambda/           → AWS Lambda adapter for distributed cloud rendering
   cli/                  → hyperframes CLI (create, preview, lint, render)
   core/                 → Types, parsers, generators, linter, runtime, frame adapters
   engine/               → Seekable page-to-video capture engine (Puppeteer + FFmpeg)
+  gcp-cloud-run/        → Google Cloud Run + Workflows adapter for distributed rendering
+  lint/                 → Composition linter powering `hyperframes lint`
+  parsers/              → Composition, asset, and GSAP parsers shared across packages
   player/               → Embeddable <hyperframes-player> web component
   producer/             → Full rendering pipeline (capture + encode + audio mix)
+  sdk/                  → Headless, framework-neutral composition editing engine
+  sdk-playground/       → Browser playground for the SDK (private, unpublished)
   shader-transitions/   → WebGL shader transitions for compositions
   studio/               → Browser-based composition editor UI
+  studio-server/        → HTTP API server backing the Studio editor
 registry/
   blocks/               → Installable sub-composition scenes (50+)
   components/           → Installable effects and snippets
