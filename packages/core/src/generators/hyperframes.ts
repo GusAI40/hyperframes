@@ -288,7 +288,7 @@ export function generateHyperframesHtml(
     styles,
     generateDefaultAnimations = true,
     resolution = "landscape",
-    compositionId = `comp-${Date.now()}`,
+    compositionId = "comp-generated",
     keyframes,
     stageZoomKeyframes,
     includeScripts = false,
