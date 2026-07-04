@@ -24,6 +24,19 @@ The 24-hour clock starts after the complete packet is received:
 
 If the packet is incomplete, reply with the missing items and do not start the clock.
 
+## Live Intake Flow
+
+Use the public order page first:
+
+`https://maya-listing-launch-pack.vercel.app/#start`
+
+The form collects agent contact details, MLS/address, media link, preferred call to action, and compliance notes. The backend creates an order ID and forwards the packet to the intake workflow. The confirmation page also provides a backup email link so no lead is lost if the email relay or optional automation needs attention.
+
+Optional automation hooks:
+
+- `MAYA_INTAKE_WEBHOOK_URL` for Zapier, Make, n8n, Slack, or a custom backend.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for order logging.
+
 ## Deliverables
 
 - 16:9 website or presentation video

@@ -171,6 +171,7 @@
       .hero-card,
       .proof-card,
       .panel,
+      .intake-card,
       .offer-card,
       .script-card {
         border: 1px solid var(--line);
@@ -340,6 +341,156 @@
         color: var(--soft);
         font-size: 12px;
         line-height: 1.35;
+      }
+
+      .intake-layout {
+        display: grid;
+        grid-template-columns: 0.8fr 1.2fr;
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .intake-card {
+        padding: clamp(24px, 4vw, 34px);
+      }
+
+      .intake-card h2 {
+        margin: 0;
+        font-size: clamp(34px, 5vw, 58px);
+        line-height: 0.96;
+      }
+
+      .intake-card p {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .trust-list {
+        display: grid;
+        gap: 12px;
+        margin: 24px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .trust-list li {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+        color: var(--muted);
+        line-height: 1.45;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .order-form {
+        display: grid;
+        gap: 16px;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field.full {
+        grid-column: 1 / -1;
+      }
+
+      label {
+        color: var(--soft);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        min-height: 46px;
+        box-sizing: border-box;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 13px;
+        background: rgba(255, 255, 255, 0.055);
+        color: var(--text);
+        font: inherit;
+        outline: none;
+      }
+
+      select {
+        color-scheme: dark;
+      }
+
+      textarea {
+        min-height: 118px;
+        resize: vertical;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: rgba(102, 217, 255, 0.62);
+        box-shadow: 0 0 0 4px rgba(102, 217, 255, 0.1);
+      }
+
+      .hidden-field {
+        position: absolute;
+        left: -10000px;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
+
+      .check-row {
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        gap: 10px;
+        align-items: start;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .check-row input {
+        width: 18px;
+        min-height: 18px;
+        margin-top: 1px;
+      }
+
+      .submit-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .submit-row button {
+        min-height: 46px;
+        border: 1px solid rgba(102, 217, 255, 0.58);
+        border-radius: 999px;
+        padding: 0 18px;
+        background: rgba(102, 217, 255, 0.08);
+        color: var(--blue);
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .fine-print {
+        margin: 0;
+        color: var(--soft);
+        font-size: 12px;
+        line-height: 1.45;
       }
 
       section {
@@ -526,7 +677,8 @@
       @media (max-width: 1040px) {
         .hero,
         .grace,
-        .cta {
+        .cta,
+        .intake-layout {
           grid-template-columns: 1fr;
         }
 
@@ -562,7 +714,8 @@
         }
 
         .promise,
-        .price {
+        .price,
+        .form-grid {
           grid-template-columns: 1fr;
         }
 
@@ -586,7 +739,7 @@
           <a class="pill" href="#deliverables">Deliverables</a>
           <a class="pill" href="#process">Process</a>
           <a class="pill" href="#scripts">Scripts</a>
-          <a class="button primary" href="mailto:reports@michellesanchezrealtor.info?subject=Maya%2024-Hour%20Listing%20Launch%20Pack&body=MLS%20number%3A%0AProperty%20address%3A%0AGo-live%20date%3A%0AAgent%20name%3A%0AAgent%20phone%3A%0AAgent%20email%3A%0AListing%20photos%20or%20media%20link%3A%0ABrokerage%20compliance%20notes%3A">Start My Pack</a>
+          <a class="button primary" href="#start">Start My Pack</a>
         </nav>
       </div>
     </div>
@@ -646,6 +799,105 @@
             </div>
           </div>
         </aside>
+      </section>
+
+      <section id="start" aria-labelledby="start-title">
+        <div class="intake-layout">
+          <div class="intake-card">
+            <p class="eyebrow">Live order intake</p>
+            <h2 id="start-title">Start the 24-hour clock.</h2>
+            <p>
+              Submit the listing packet here. Maya creates an order ID, forwards the details to the intake workflow, and
+              returns a confirmation page with a backup email link.
+            </p>
+            <ul class="trust-list">
+              <li>Required fields keep incomplete packets from silently starting the deadline.</li>
+              <li>Media is collected by link, so agents can use MLS media, Dropbox, Google Drive, or a listing folder.</li>
+              <li>Agent review is required before any final asset is represented as approved.</li>
+            </ul>
+          </div>
+
+          <form class="intake-card order-form" action="https://formsubmit.co/reports@michellesanchezrealtor.info" method="post">
+            <input type="hidden" name="package_type" value="Maya 24-Hour Listing Launch Pack - $497 founding offer" />
+            <input type="hidden" name="_subject" value="New Maya 24-Hour Listing Launch Pack Request" />
+            <input type="hidden" name="_template" value="table" />
+            <input type="hidden" name="_captcha" value="false" />
+            <input type="hidden" name="_next" value="https://maya-listing-launch-pack.vercel.app/thanks" />
+            <div class="hidden-field" aria-hidden="true">
+              <label for="website_url">Website</label>
+              <input id="website_url" name="website_url" tabindex="-1" autocomplete="off" />
+            </div>
+
+            <div class="form-grid">
+              <div class="field">
+                <label for="agent_name">Agent name</label>
+                <input id="agent_name" name="agent_name" autocomplete="name" required />
+              </div>
+              <div class="field">
+                <label for="agent_email">Agent email</label>
+                <input id="agent_email" name="email" type="email" autocomplete="email" required />
+              </div>
+              <div class="field">
+                <label for="agent_phone">Agent phone</label>
+                <input id="agent_phone" name="agent_phone" autocomplete="tel" required />
+              </div>
+              <div class="field">
+                <label for="go_live_date">Go-live date</label>
+                <input id="go_live_date" name="go_live_date" placeholder="Today, Friday, open house date..." />
+              </div>
+              <div class="field">
+                <label for="mls_number">MLS number</label>
+                <input id="mls_number" name="mls_number" inputmode="numeric" placeholder="21304249" />
+              </div>
+              <div class="field">
+                <label for="listing_price">Listing price</label>
+                <input id="listing_price" name="listing_price" placeholder="$497,000" />
+              </div>
+              <div class="field full">
+                <label for="property_address">Property address</label>
+                <input id="property_address" name="property_address" placeholder="Street, city, state, ZIP" />
+              </div>
+              <div class="field full">
+                <label for="media_link">Photos or media link</label>
+                <input
+                  id="media_link"
+                  name="media_link"
+                  type="url"
+                  placeholder="MLS media, Dropbox, Google Drive, property site, or photo folder"
+                  required
+                />
+              </div>
+              <div class="field full">
+                <label for="preferred_cta">Preferred call to action</label>
+                <select id="preferred_cta" name="preferred_cta">
+                  <option value="Schedule a private tour">Schedule a private tour</option>
+                  <option value="Open house">Open house</option>
+                  <option value="Just listed">Just listed</option>
+                  <option value="Download listing details">Download listing details</option>
+                  <option value="Seller lead capture">Seller lead capture</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="compliance_notes">Brokerage or compliance notes</label>
+                <textarea
+                  id="compliance_notes"
+                  name="compliance_notes"
+                  placeholder="Required logos, disclaimers, fair housing notes, agent/brokerage approval process, or special property facts to verify."
+                ></textarea>
+              </div>
+            </div>
+
+            <label class="check-row" for="approval_ack">
+              <input id="approval_ack" name="approval_ack" type="checkbox" value="yes" required />
+              <span>I understand the first pass is for agent review and the 24-hour clock starts after the complete packet is received.</span>
+            </label>
+
+            <div class="submit-row">
+              <button type="submit">Submit Listing Packet</button>
+              <p class="fine-print">Backup inbox: reports@michellesanchezrealtor.info</p>
+            </div>
+          </form>
+        </div>
       </section>
 
       <section id="deliverables" aria-labelledby="deliverables-title">
@@ -774,7 +1026,7 @@
             </p>
           </div>
           <div class="cta-actions">
-            <a class="button primary" href="mailto:reports@michellesanchezrealtor.info?subject=Maya%2024-Hour%20Listing%20Launch%20Pack&body=MLS%20number%3A%0AProperty%20address%3A%0AGo-live%20date%3A%0AAgent%20name%3A%0AAgent%20phone%3A%0AAgent%20email%3A%0AListing%20photos%20or%20media%20link%3A%0ABrokerage%20compliance%20notes%3A">Start by Email</a>
+            <a class="button primary" href="#start">Start the Intake</a>
             <a class="button gold" href="#deliverables">Review Deliverables</a>
           </div>
         </div>
