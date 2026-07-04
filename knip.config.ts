@@ -1,6 +1,9 @@
 import type { KnipConfig } from "knip";
 
 const config: KnipConfig = {
+  // An export consumed in its own module is not dead; only cross-module
+  // orphans are signal.
+  ignoreExportsUsedInFile: true,
   ignoreDependencies: [
     // Mirrors .fallowrc.jsonc's documented intentional list.
     // Required by bundled puppeteer deps (@puppeteer/browsers,
@@ -35,6 +38,10 @@ const config: KnipConfig = {
       // Run via root package.json scripts and CI workflows
       // (.github/workflows/{catalog-previews,docs}.yml), or manually.
       entry: ["scripts/*.{ts,mjs}", "scripts/*/run.mjs"],
+      // Workspace link that guarantees player/dist exists for the cli
+      // build-copy step (packages/cli/scripts/build-copy.mjs copies it so
+      // `hyperframes present` can serve the standalone player).
+      ignoreDependencies: ["@hyperframes/player"],
     },
     "packages/aws-lambda": {
       // The four esbuild entryPoints in build.mjs, one per package.json
@@ -47,12 +54,18 @@ const config: KnipConfig = {
       // page.addScriptTag (layout.ts / validate.ts) — referenced by file
       // path, never imported.
       entry: ["src/commands/*.browser.js"],
+      // scripts/build-copy.mjs copies ../studio/dist into the CLI bundle at
+      // build time; the dep declares that build-order edge, not an import.
+      ignoreDependencies: ["@hyperframes/studio"],
     },
     "packages/core": {
       // Built as a standalone IIFE for the browser-side sandbox runtime;
       // referenced by file path (not import) in
       // scripts/build-hyperframes-runtime-artifact.ts.
       entry: ["src/runtime/entry.ts"],
+      // Ambient global declarations (Window typing for the runtime) pulled
+      // in by tsconfig include, never imported.
+      ignore: ["src/runtime/window.d.ts"],
     },
     "packages/gcp-cloud-run": {
       // Run by the package Dockerfile (`bunx tsx scripts/generate-font-data.ts`),
@@ -81,15 +94,30 @@ const config: KnipConfig = {
         // esbuild entry of scripts/build-hf-early-stub.ts (compiled into
         // src/generated/hf-early-stub-inline.ts), referenced by path only.
         "stubs/hf-early-stub.ts",
+        // Loaded by regression-harness.ts via a dynamic string import
+        // (LAMBDA_LOCAL_MODULE) so plain harness runs don't pull
+        // @hyperframes/aws-lambda; also the consumer of that devDep.
+        "src/regression-harness-lambda-local.ts",
       ],
       // Composition fixture projects (HTML plus css/js/vendor assets
       // referenced from the HTML, not imported) used by render tests.
       ignore: ["tests/**"],
     },
+    "packages/player": {
+      // Loaded by the perf-harness fixture pages (tests/perf/fixtures/*/
+      // index.html) served to the browser, not imported as a module.
+      ignoreDependencies: ["gsap"],
+    },
     "packages/sdk": {
       // Standalone usage examples; typechecked via tsconfig.check.json
       // (`bun run typecheck:examples`) but never imported.
       entry: ["examples/*.ts"],
+    },
+    "packages/studio": {
+      // vite.producer.ts shells out to `bun run --filter
+      // @hyperframes/producer build`; the dep declares that build-order
+      // edge, not an import.
+      ignoreDependencies: ["@hyperframes/producer"],
     },
   },
 };
