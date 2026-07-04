@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   writeFileSync,
   copyFileSync,
   rmSync,
@@ -1366,20 +1367,30 @@ async function runTestSuite(
  */
 let runCompleted = false;
 
-process.on("beforeExit", () => {
-  if (runCompleted) return;
-  if (process.exitCode === undefined || process.exitCode === 0) {
-    console.error(
-      JSON.stringify({
-        event: "test_suite_incomplete",
-        message:
-          "Event loop drained before all test suites completed; failing the run. " +
-          "One or more renders likely abandoned a pending promise.",
-      }),
-    );
-    process.exitCode = 1;
+/**
+ * True when this module is the process entry point (`tsx src/regression-harness.ts`),
+ * false when it is merely imported for its exports (e.g.
+ * `utils/streamDurationParity.test.ts` importing {@link checkStreamDurationParity}).
+ * Importing must never launch the full regression run or register the
+ * `beforeExit` incomplete-run guard inside an unrelated process.
+ *
+ * `import.meta.main` is not reliably available under tsx, so compare the
+ * realpath of `process.argv[1]` against this module's own file path instead.
+ * The realpaths absorb symlinks (e.g. workspace `node_modules` links) and
+ * relative invocation paths.
+ */
+function isProcessEntryPoint(): boolean {
+  const entryArg = process.argv[1];
+  if (!entryArg) {
+    return false;
   }
-});
+  try {
+    return realpathSync(entryArg) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    // argv[1] may not be a real file path (bundled entries, REPL, etc.).
+    return false;
+  }
+}
 
 async function run(): Promise<void> {
   const options = parseArgs(process.argv);
@@ -1525,12 +1536,29 @@ async function run(): Promise<void> {
   runCompleted = true;
 }
 
-void run().catch((error) => {
-  console.error(
-    JSON.stringify({
-      event: "test_suite_fatal",
-      message: error instanceof Error ? error.message : String(error),
-    }),
-  );
-  process.exitCode = 1;
-});
+if (isProcessEntryPoint()) {
+  process.on("beforeExit", () => {
+    if (runCompleted) return;
+    if (process.exitCode === undefined || process.exitCode === 0) {
+      console.error(
+        JSON.stringify({
+          event: "test_suite_incomplete",
+          message:
+            "Event loop drained before all test suites completed; failing the run. " +
+            "One or more renders likely abandoned a pending promise.",
+        }),
+      );
+      process.exitCode = 1;
+    }
+  });
+
+  void run().catch((error) => {
+    console.error(
+      JSON.stringify({
+        event: "test_suite_fatal",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    process.exitCode = 1;
+  });
+}

@@ -57,9 +57,7 @@
     "tar": "^7.4.3"
   },
   "devDependencies": {
-    "@types/aws-lambda": "^8.10.146",
     "@types/node": "^25.0.10",
-    "@types/tar": "^6.1.13",
     "aws-cdk-lib": "^2.130.0",
     "constructs": "^10.3.0",
     "esbuild": "^0.25.12",

@@ -42,7 +42,9 @@
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
+    "@hyperframes/core": "workspace:*",
     "@hyperframes/player": "workspace:*",
+    "@hyperframes/producer": "workspace:*",
     "@types/node": "^25.0.10",
     "fallow": "^2.75.0",
     "happy-dom": "^20.9.0",
