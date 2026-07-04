@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 const root = process.cwd();
 const projectDir = path.join(root, "ai-real-estate-tag-hero");
@@ -8,40 +9,40 @@ const duration = 15;
 const voiceId = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
 
 const narration = [
-  "AI for Real Estate by TAG.",
-  "Where AI agents meet real estate agents.",
-  "Listings become campaigns. Websites become lead hubs.",
-  "Open houses become future seller opportunities.",
+  "Maya Listing Launch Pack.",
+  "Send one MLS number. Get a premium campaign kit.",
+  "Hero video. Story cut. Square post. Captions and a download page.",
+  "First pass in twenty four hours after the complete listing packet arrives.",
 ];
 
 const scenes = [
   {
-    eyebrow: "AI for Real Estate by TAG",
-    headline: "Where AI agents meet real estate agents.",
-    body: "Premium systems for the modern agent.",
+    eyebrow: "Maya Listing Launch Pack",
+    headline: "Launch the listing like it matters.",
+    body: "Send one MLS number or address. Maya turns it into a premium campaign kit.",
     visual: "estate",
-    caption: "AI for Real Estate by TAG. Where AI agents meet real estate agents.",
+    caption: "One listing in. A premium launch package out.",
   },
   {
-    eyebrow: "Listing Engine",
-    headline: "Listings become campaigns.",
-    body: "Launch-ready videos, mailers, pages, posts, and follow-up.",
+    eyebrow: "24-Hour Offer",
+    headline: "From MLS to market-ready assets.",
+    body: "Website hero, story/reel, square feed cut, captions, CTA, and handoff page.",
     visual: "campaigns",
-    caption: "Listings become campaigns. Websites become lead hubs.",
+    caption: "Built for speed. Designed for trust. Ready for agent review.",
   },
   {
-    eyebrow: "Lead Hub",
-    headline: "Websites become intelligent lead hubs.",
-    body: "Maya concierge, forms, reporting, and instant client workflows.",
-    visual: "hub",
-    caption: "Maya turns every touchpoint into a smarter next step.",
+    eyebrow: "Live Intake",
+    headline: "A real workflow, not a loose request.",
+    body: "Agent details, media link, compliance notes, and review requirements captured upfront.",
+    visual: "intake",
+    caption: "The clock starts when the listing packet is complete.",
   },
   {
-    eyebrow: "Maya Workflow Suite",
-    headline: "Open houses become future seller opportunities.",
-    body: "Showing Planner. CMA Generator. Follow-up systems. Built to be reviewed, refined, and sent.",
-    visual: "proof",
-    caption: "Send Maya an address. Get a premium real estate deliverable back.",
+    eyebrow: "Founding Agent Offer",
+    headline: "First pass in 24 hours.",
+    body: "$497 per property. Agent-reviewed before anything is published or represented as approved.",
+    visual: "delivery",
+    caption: "Send the MLS number. Receive the launch pack.",
   },
 ];
 
@@ -85,10 +86,14 @@ function durationOf(file) {
 
 async function createVoiceover(apiKey) {
   const out = path.join(projectDir, "assets", "narration.mp3");
-  if (fs.existsSync(out)) return out;
+  const transcript = narration.join(" ");
+  const hashPath = path.join(projectDir, "assets", "narration.sha256");
+  const transcriptHash = createHash("sha256").update(transcript).digest("hex");
+  if (fs.existsSync(out) && fs.existsSync(hashPath) && fs.readFileSync(hashPath, "utf8").trim() === transcriptHash) {
+    return out;
+  }
   if (!apiKey) throw new Error("CARTESIA_API_KEY missing from .env");
 
-  const transcript = narration.join(" ");
   const response = await fetch("https://api.cartesia.ai/tts/bytes", {
     method: "POST",
     headers: {
@@ -111,6 +116,7 @@ async function createVoiceover(apiKey) {
   }
 
   fs.writeFileSync(out, Buffer.from(await response.arrayBuffer()));
+  fs.writeFileSync(hashPath, transcriptHash);
   return out;
 }
 
@@ -118,11 +124,11 @@ function writeDesignFiles() {
   fs.mkdirSync(path.join(projectDir, "assets"), { recursive: true });
   fs.writeFileSync(
     path.join(projectDir, "DESIGN.md"),
-    `# AI for Real Estate by TAG Hero Design
+    `# Maya Listing Launch Pack Hero Design
 
 ## Visual System
 
-Premium real estate AI operating system. This should feel like a luxury home at twilight merging with an intelligent SaaS command center: atmospheric, editorial, calm, precise, and expensive.
+Premium listing-launch product film. This should feel like a luxury real estate command center and a high-trust operational workflow: cinematic, precise, agent-facing, and expensive. The viewer should understand the commercial offer in the first five seconds.
 
 ## Palette
 
@@ -143,7 +149,7 @@ Premium real estate AI operating system. This should feel like a luxury home at 
 
 ## Motion
 
-Use cinematic focus pulls, slow parallax, glass panels assembling, light leaks, subtle data-line motion, and one final brand reveal. The loop must work muted. Audio is support, not dependency.
+Use cinematic focus pulls, slow parallax, glass panels assembling, light leaks, subtle data-line motion, and one final offer reveal. The loop must work muted. Audio is support, not dependency.
 
 ## Constraints
 
@@ -154,13 +160,14 @@ Use cinematic focus pulls, slow parallax, glass panels assembling, light leaks, 
 - No cartoon AI.
 - No loud glitch effects.
 - No generic stock-looking tech blobs.
+- Do not imply brokerage approval before agent review.
 - Keep desktop and mobile text readable.
 `,
   );
 
   fs.writeFileSync(
     path.join(projectDir, "SCRIPT.md"),
-    `# AI for Real Estate by TAG Hero Script
+    `# Maya Listing Launch Pack Hero Script
 
 ${narration.map((line, index) => `${index + 1}. ${line}`).join("\n")}
 `,
@@ -168,7 +175,7 @@ ${narration.map((line, index) => `${index + 1}. ${line}`).join("\n")}
 
   fs.writeFileSync(
     path.join(projectDir, "STORYBOARD.md"),
-    `# Storyboard
+    `# Maya Listing Launch Pack Storyboard
 
 ${scenes
   .map(
@@ -209,22 +216,22 @@ function visualMarkup(scene) {
   if (scene.visual === "campaigns") {
     return `
       <div class="artifact-stage">
-        <div class="artifact listing-card"><em>LISTING</em><strong>Active Campaign</strong><span>photos - copy - video</span></div>
-        <div class="artifact video-card"><em>VIDEO</em><strong>Story Cut</strong><span>hero + reels + posts</span></div>
-        <div class="artifact mailer-card"><em>MAILER</em><strong>Seller Reach</strong><span>print + QR + follow-up</span></div>
-        <div class="artifact web-card"><em>WEB</em><strong>Lead Hub</strong><span>landing page live</span></div>
+        <div class="artifact listing-card"><em>16:9 HERO</em><strong>Website Video</strong><span>cinematic listing opener</span></div>
+        <div class="artifact video-card"><em>9:16 STORY</em><strong>Reel Cut</strong><span>vertical social launch</span></div>
+        <div class="artifact mailer-card"><em>1:1 FEED</em><strong>Square Post</strong><span>social-ready campaign cut</span></div>
+        <div class="artifact web-card"><em>HANDOFF</em><strong>Download Page</strong><span>links + captions + CTA</span></div>
       </div>`;
   }
 
-  if (scene.visual === "hub") {
+  if (scene.visual === "intake") {
     return `
       <div class="dashboard-shell">
-        <div class="dash-top"><span>MAYA CONCIERGE</span><em>LIVE</em></div>
+        <div class="dash-top"><span>LIVE INTAKE</span><em>WIRED</em></div>
         <div class="dash-grid">
-          <div><strong>Lead Capture</strong><span>Open house inquiry</span></div>
-          <div><strong>Follow-Up</strong><span>Seller sequence ready</span></div>
-          <div><strong>Report</strong><span>Campaign signal found</span></div>
-          <div><strong>Next Step</strong><span>Agent review queue</span></div>
+          <div><strong>MLS / Address</strong><span>one property request</span></div>
+          <div><strong>Media Link</strong><span>photos, video, folder</span></div>
+          <div><strong>Compliance Notes</strong><span>review requirements</span></div>
+          <div><strong>Agent Approval</strong><span>before launch</span></div>
         </div>
         <div class="pulse-node node-a"></div>
         <div class="pulse-node node-b"></div>
@@ -234,12 +241,12 @@ function visualMarkup(scene) {
   return `
       <div class="proof-stack">
         <div class="proof-card proof-main">
-          <span>AI AGENTS</span>
-          <strong>Meet</strong>
-          <span>REAL ESTATE AGENTS</span>
+          <span>FIRST PASS</span>
+          <strong>24h</strong>
+          <span>AFTER COMPLETE PACKET</span>
         </div>
-        <div class="proof-card proof-left"><em>Maya Showing Planner</em><span>buyer tour package</span></div>
-        <div class="proof-card proof-right"><em>Maya CMA Generator</em><span>seller market report</span></div>
+        <div class="proof-card proof-left"><em>$497 Founding Offer</em><span>per listing launch pack</span></div>
+        <div class="proof-card proof-right"><em>Review-Ready Delivery</em><span>agent checks facts first</span></div>
         <div class="tag-seal">TAG</div>
       </div>`;
 }
@@ -663,7 +670,7 @@ function writeHtml(format, audioDuration) {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AI for Real Estate by TAG Hero - ${format.slug}</title>
+    <title>Maya Listing Launch Pack Hero - ${format.slug}</title>
     <style>
 ${cssFor(format)}
     </style>
@@ -671,8 +678,8 @@ ${cssFor(format)}
   <body>
     <div id="main-composition" data-composition-id="main" data-start="0" data-duration="${duration}" data-width="${format.width}" data-height="${format.height}">
       <div class="brand-rail">
-        <strong>AI for Real Estate by TAG</strong>
-        <span>Hero Loop</span>
+        <strong>Maya Listing Launch Pack</strong>
+        <span>24h First Pass</span>
       </div>
       ${sceneMarkup(format)}
       <div class="luxe-transition" data-layout-ignore></div>
@@ -731,7 +738,7 @@ async function main() {
     path.join(projectDir, "manifest.json"),
     JSON.stringify(
       {
-        title: "AI for Real Estate by TAG Hero",
+        title: "Maya Listing Launch Pack Hero",
         duration,
         narrationDuration: audioDuration,
         formats,
@@ -741,7 +748,7 @@ async function main() {
       2,
     ),
   );
-  console.log(`Generated AI for Real Estate by TAG hero. Narration: ${audioDuration.toFixed(2)}s`);
+  console.log(`Generated Maya Listing Launch Pack hero. Narration: ${audioDuration.toFixed(2)}s`);
 }
 
 main().catch((error) => {

@@ -1,4 +1,4 @@
-# AI for Real Estate by TAG - Rendered Videos
+# Maya Listing Launch Pack - Rendered Videos
 
 ## Output Files
 
@@ -18,15 +18,15 @@
 
 ## Creative Direction
 
-This iteration reframes the product from a literal workflow explainer into a premium umbrella brand film:
+This iteration reframes the proof video from a broad umbrella brand film into a direct 24-hour listing-launch offer:
 
-- Lead message: `AI for Real Estate by TAG`
-- Emotional promise: `Where AI agents meet real estate agents.`
+- Lead message: `Maya Listing Launch Pack`
+- Emotional promise: `Launch the listing like it matters.`
 - Proof points:
-  - Listings become campaigns.
-  - Websites become intelligent lead hubs.
-  - Open houses become future seller opportunities.
-- Final CTA: `Send Maya an address. Get a premium real estate deliverable back.`
+  - One MLS number or address starts the request.
+  - Maya returns website, story/reel, square, captions, CTA, and handoff assets.
+  - The workflow captures media, compliance notes, and agent-review requirements.
+- Final CTA: `Send the MLS number. Receive the launch pack.`
 
 ## Source Files
 

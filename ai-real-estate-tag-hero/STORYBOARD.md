@@ -1,29 +1,29 @@
-# Storyboard
+# Maya Listing Launch Pack Storyboard
 
-## Scene 1: Where AI agents meet real estate agents.
+## Scene 1: Launch the listing like it matters.
 
-- Eyebrow: AI for Real Estate by TAG
-- Body: Premium systems for the modern agent.
+- Eyebrow: Maya Listing Launch Pack
+- Body: Send one MLS number or address. Maya turns it into a premium campaign kit.
 - Visual: estate
-- Caption: AI for Real Estate by TAG. Where AI agents meet real estate agents.
+- Caption: One listing in. A premium launch package out.
 
-## Scene 2: Listings become campaigns.
+## Scene 2: From MLS to market-ready assets.
 
-- Eyebrow: Listing Engine
-- Body: Launch-ready videos, mailers, pages, posts, and follow-up.
+- Eyebrow: 24-Hour Offer
+- Body: Website hero, story/reel, square feed cut, captions, CTA, and handoff page.
 - Visual: campaigns
-- Caption: Listings become campaigns. Websites become lead hubs.
+- Caption: Built for speed. Designed for trust. Ready for agent review.
 
-## Scene 3: Websites become intelligent lead hubs.
+## Scene 3: A real workflow, not a loose request.
 
-- Eyebrow: Lead Hub
-- Body: Maya concierge, forms, reporting, and instant client workflows.
-- Visual: hub
-- Caption: Maya turns every touchpoint into a smarter next step.
+- Eyebrow: Live Intake
+- Body: Agent details, media link, compliance notes, and review requirements captured upfront.
+- Visual: intake
+- Caption: The clock starts when the listing packet is complete.
 
-## Scene 4: Open houses become future seller opportunities.
+## Scene 4: First pass in 24 hours.
 
-- Eyebrow: Maya Workflow Suite
-- Body: Showing Planner. CMA Generator. Follow-up systems. Built to be reviewed, refined, and sent.
-- Visual: proof
-- Caption: Send Maya an address. Get a premium real estate deliverable back.
+- Eyebrow: Founding Agent Offer
+- Body: $497 per property. Agent-reviewed before anything is published or represented as approved.
+- Visual: delivery
+- Caption: Send the MLS number. Receive the launch pack.

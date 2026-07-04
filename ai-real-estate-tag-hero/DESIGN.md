@@ -1,8 +1,8 @@
-# AI for Real Estate by TAG Hero Design
+# Maya Listing Launch Pack Hero Design
 
 ## Visual System
 
-Premium real estate AI operating system. This should feel like a luxury home at twilight merging with an intelligent SaaS command center: atmospheric, editorial, calm, precise, and expensive.
+Premium listing-launch product film. This should feel like a luxury real estate command center and a high-trust operational workflow: cinematic, precise, agent-facing, and expensive. The viewer should understand the commercial offer in the first five seconds.
 
 ## Palette
 
@@ -23,7 +23,7 @@ Premium real estate AI operating system. This should feel like a luxury home at 
 
 ## Motion
 
-Use cinematic focus pulls, slow parallax, glass panels assembling, light leaks, subtle data-line motion, and one final brand reveal. The loop must work muted. Audio is support, not dependency.
+Use cinematic focus pulls, slow parallax, glass panels assembling, light leaks, subtle data-line motion, and one final offer reveal. The loop must work muted. Audio is support, not dependency.
 
 ## Constraints
 
@@ -34,4 +34,5 @@ Use cinematic focus pulls, slow parallax, glass panels assembling, light leaks, 
 - No cartoon AI.
 - No loud glitch effects.
 - No generic stock-looking tech blobs.
+- Do not imply brokerage approval before agent review.
 - Keep desktop and mobile text readable.
