@@ -42,6 +42,7 @@
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
+    "@hyperframes/core": "workspace:*",
     "@hyperframes/player": "workspace:*",
     "@hyperframes/producer": "workspace:*",
     "@types/node": "^25.0.10",
